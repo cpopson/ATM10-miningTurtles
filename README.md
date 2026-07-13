@@ -77,10 +77,10 @@ mount this folder so you can edit in VS Code and run instantly.
 
 1. Push this repo to GitHub.
 2. Edit `BASE` in `update.lua` to your repo's raw-content URL (ending in `/`),
-   e.g. `https://raw.githubusercontent.com/USER/REPO/main/`.
+   e.g. `https://raw.githubusercontent.com/USER/REPO/master/`.
 3. On a fresh in-game computer or turtle, bootstrap once:
    ```
-   wget https://raw.githubusercontent.com/USER/REPO/main/update.lua update.lua
+   wget https://raw.githubusercontent.com/USER/REPO/master/update.lua update.lua
    update
    ```
 4. After every push, just run `update` again.
