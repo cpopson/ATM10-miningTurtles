@@ -17,7 +17,7 @@ Three principles drive every design decision here:
 1. **World interaction is separated from logic.** Every `turtle.*` call (move,
    dig, inspect, fuel, inventory) lives behind an injectable backend in
    `nav.lua`. Mining logic never touches `turtle` directly. This is what lets
-   the *same* code run against a real turtle in Minecraft or a simulated voxel
+   the _same_ code run against a real turtle in Minecraft or a simulated voxel
    world in tests.
 2. **Sim-first development.** Patterns and logic are built and validated in the
    mock world (`mockturtle.lua`) before anything loads in Minecraft. In-game
@@ -31,20 +31,22 @@ Three principles drive every design decision here:
 
 ## Repo layout
 
-| File             | Role                                                                      | Status |
-|------------------|---------------------------------------------------------------------------|--------|
-| `nav.lua`        | Position/heading tracking + collision-safe movement; injectable backend   | ✅ done |
-| `mockturtle.lua` | In-memory voxel world implementing the turtle API subset (gravity, bedrock)| ✅ done |
-| `test_nav.lua`   | 12-scenario test suite for `nav` against the mock world                    | ✅ 12/12 |
-| `probe.lua`      | Real-turtle smoke test: a round trip that must close to origin             | ✅ done |
-| `update.lua`     | Pulls the latest files from GitHub onto an in-game computer/turtle         | ✅ done |
-| `quarry.lua`     | Quarry pattern generator                                                   | ⬜ next |
-| `branch.lua`     | Branch/strip pattern generator                                            | ⬜ todo |
-| `tunnel.lua`     | Tunnel pattern generator                                                   | ⬜ todo |
-| `comms.lua`      | rednet messaging protocol (shared by control + turtles)                    | ⬜ todo |
-| `coordinator.lua`| Fleet dispatcher: partition jobs, assign, track, reassign on failure       | ⬜ todo |
-| `ui.lua`         | Basalt monitor UI (dashboard + job setup)                                  | ⬜ todo |
-| `state.lua`      | Disk persistence + reboot/chunk-unload recovery                            | ⬜ todo |
+| File              | Role                                                                        | Status   |
+| ----------------- | --------------------------------------------------------------------------- | -------- |
+| `nav.lua`         | Position/heading tracking + collision-safe movement; injectable backend     | ✅ done  |
+| `mockturtle.lua`  | In-memory voxel world implementing the turtle API subset (gravity, bedrock) | ✅ done  |
+| `test_nav.lua`    | 12-scenario test suite for `nav` against the mock world                     | ✅ 12/12 |
+| `probe.lua`       | Real-turtle smoke test: a round trip that must close to origin              | ✅ done  |
+| `update.lua`      | Pulls the latest files from GitHub onto an in-game computer/turtle          | ✅ done  |
+| `quarry.lua`      | Quarry pattern generator (single-turtle box clear)                          | ✅ done  |
+| `test_quarry.lua` | 9-scenario suite for `quarry` against the mock world                        | ✅ 9/9   |
+| `mine.lua`        | In-game driver: run a quarry on a turtle (`mine <w> <l> <d>`)                | ✅ done  |
+| `branch.lua`      | Branch/strip pattern generator                                              | ⬜ todo  |
+| `tunnel.lua`      | Tunnel pattern generator                                                    | ⬜ todo  |
+| `comms.lua`       | rednet messaging protocol (shared by control + turtles)                     | ⬜ todo  |
+| `coordinator.lua` | Fleet dispatcher: partition jobs, assign, track, reassign on failure        | ⬜ todo  |
+| `ui.lua`          | Basalt monitor UI (dashboard + job setup)                                   | ⬜ todo  |
+| `state.lua`       | Disk persistence + reboot/chunk-unload recovery                             | ⬜ todo  |
 
 ---
 
@@ -77,10 +79,10 @@ mount this folder so you can edit in VS Code and run instantly.
 
 1. Push this repo to GitHub.
 2. Edit `BASE` in `update.lua` to your repo's raw-content URL (ending in `/`),
-   e.g. `https://raw.githubusercontent.com/USER/REPO/master/`.
+   e.g. `https://raw.githubusercontent.com/cpopson/ATM10-miningTurtles/master/`.
 3. On a fresh in-game computer or turtle, bootstrap once:
    ```
-   wget https://raw.githubusercontent.com/USER/REPO/master/update.lua update.lua
+   wget https://raw.githubusercontent.com/cpopson/ATM10-miningTurtles/master/update.lua update.lua
    update
    ```
 4. After every push, just run `update` again.
@@ -104,6 +106,7 @@ same code.
    wrong turn is a convention mismatch to fix in `nav.lua` before building more.
 
 Deferred until needed:
+
 - **GPS** — `nav` tracks from a known start pose, so GPS isn't required yet. Add
   it for absolute re-location after reboots (4 computers running `gps host`,
   placed high at known coordinates).
@@ -111,22 +114,52 @@ Deferred until needed:
 
 ---
 
+## Run a quarry
+
+Once `probe` passes, clear a box with **`mine.lua`** — a thin in-game driver
+around the tested `quarry.lua` module.
+
+1. Place the turtle at the **top corner** of the box you want dug — in the air,
+   one block above the first layer to remove.
+2. Fuel it (`refuel all`) and `update` to pull the latest files.
+3. Run:
+   ```
+   mine <width> <length> <depth>
+   ```
+   e.g. `mine 3 3 5` clears a 3×3 area, 5 deep. It prints
+   `DONE: cleared N cells, back at start`, or `ABORTED (reason)` if it hits
+   bedrock or runs out of fuel.
+
+**Geometry** — relative to how the turtle sits, the box extends **right** (`+X`)
+for width, **behind** (`+Z`) for length, and **down** (`−Y`) for depth. The
+turtle's own column is the entry/exit shaft; it returns to the start block when
+finished.
+
+`mine.lua` auto-`refuel`s and warns if fuel is short (it needs roughly
+`width × length × depth` plus the return trip). **No inventory dumping yet** — a
+box bigger than the 16 slots can hold will drop the overflow on the ground
+(ender-chest auto-dump is a later milestone).
+
+---
+
 ## Design specs for upcoming work
 
 ### Message protocol (rednet)
+
 Control computer = server; turtles = clients keyed by `os.getComputerID()`;
 communication over a single named protocol.
 
-| Message    | Direction        | Payload                     |
-|------------|------------------|-----------------------------|
-| `REGISTER` | turtle → control | turtle id, position         |
-| `ASSIGN`   | control → turtle | job (pattern, region, origin)|
-| `PROGRESS` | turtle → control | position, fuel, blocks mined |
-| `DONE`     | turtle → control | job id                      |
-| `ERROR`    | turtle → control | reason                      |
+| Message    | Direction        | Payload                                |
+| ---------- | ---------------- | -------------------------------------- |
+| `REGISTER` | turtle → control | turtle id, position                    |
+| `ASSIGN`   | control → turtle | job (pattern, region, origin)          |
+| `PROGRESS` | turtle → control | position, fuel, blocks mined           |
+| `DONE`     | turtle → control | job id                                 |
+| `ERROR`    | turtle → control | reason                                 |
 | `CONTROL`  | control → turtle | `pause` / `resume` / `stop` / `return` |
 
 ### Coordinator / partitioning
+
 - **Quarry:** split the bounding box into column-strips by X range; each turtle
   clears its slab top-to-bottom — columns are never shared.
 - **Branch/strip:** one turtle cuts the main tunnel, then each turtle takes
@@ -134,12 +167,14 @@ communication over a single named protocol.
 - **Tunnel:** each turtle gets its own start point and heading.
 
 ### UI (Basalt on the monitor)
+
 - **Dashboard screen:** one row per turtle — state, fuel bar, position, % done.
 - **Job-setup screen:** pattern, origin, dimensions, turtle assignment, Start.
 - **Global controls:** Pause / Resume / Stop / Return home.
 - The control computer runs comms + UI concurrently via `parallel.waitForAny`.
 
 ### Persistence
+
 - Each turtle writes its job + progress cursor to disk every few blocks; on boot
   it reloads and re-`REGISTER`s with the coordinator.
 - Keep turtles chunk-loaded (chunky turtle / chunk loader) so they run while the

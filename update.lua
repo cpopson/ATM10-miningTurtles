@@ -24,6 +24,7 @@ local FILES = {
   "probe.lua",
   "quarry.lua",
   "test_quarry.lua",
+  "mine.lua",
 }
 
 local function fetch(name)
