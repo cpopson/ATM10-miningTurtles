@@ -302,4 +302,7 @@ for i, scenario in ipairs(scenarios) do
 end
 
 print(scPassed .. " passed, " .. scFailed .. " failed")
-os.exit(scFailed == 0 and 0 or 1)
+-- os.exit exists under desktop Lua (sets the process exit code for CI) but NOT
+-- under CC:Tweaked's `os` table, so guard it — otherwise the suite crashes
+-- in-game / in CraftOS-PC right after printing the summary.
+if os.exit then os.exit(scFailed == 0 and 0 or 1) end
