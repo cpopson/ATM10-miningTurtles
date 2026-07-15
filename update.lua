@@ -22,6 +22,8 @@ local FILES = {
   "mockturtle.lua",
   "test_nav.lua",
   "probe.lua",
+  "quarry.lua",
+  "test_quarry.lua",
 }
 
 local function fetch(name)
