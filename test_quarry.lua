@@ -213,6 +213,40 @@ local function s09_gravel_inside_box()
 end
 
 --------------------------------------------------------------------------------
+-- 10. ender-chest auto-dump: loot slots fill, dump in place, resume, full clear
+--------------------------------------------------------------------------------
+local function s10_ender_dump_and_resume()
+  local m, nav = setup()
+  fillSolidBox(m, 0, 1, 0, 3, 3, 2)
+  -- Loot slots 1..15 nearly full so the first dig fills them and forces a dump.
+  for s = 1, 14 do m:_addItem(s, "minecraft:cobblestone", 64) end
+  m:_addItem(15, "minecraft:stone", 63)
+  m:_addEnderChest(16)
+
+  local success, stats = Quarry.new(nav, { chestSlot = 16 }):run({ width = 3, length = 3, depth = 2 })
+  eq(success, true, "s10: run succeeds with ender-chest dumping")
+  ok(stats.dumps >= 1, "s10: at least one dump happened")
+  assertBoxCleared(m, 0, 1, 0, 3, 3, 2, "s10")
+  ok(m:_enderTotal() > 0, "s10: loot was deposited into the ender network")
+  local chest = m.getItemDetail(16) -- dot-call: bound turtle-API fn
+  ok(chest ~= nil and chest.name:find("ender") ~= nil, "s10: ender chest still reserved in slot 16")
+  poseEq(nav, m, 0, 1, 0, 0, "s10: closed loop after dumping")
+end
+
+--------------------------------------------------------------------------------
+-- 11. no ender chest -> no dumping (dump path stays off)
+--------------------------------------------------------------------------------
+local function s11_no_chest_no_dump()
+  local m, nav = setup()
+  fillSolidBox(m, 0, 1, 0, 2, 2, 2)
+  local success, stats = Quarry.new(nav):run({ width = 2, length = 2, depth = 2 })
+  eq(success, true, "s11: run succeeds without a chest")
+  eq(stats.dumps, 0, "s11: no dumps when no ender chest present")
+  eq(m:_enderTotal(), 0, "s11: nothing deposited")
+  assertBoxCleared(m, 0, 1, 0, 2, 2, 2, "s11")
+end
+
+--------------------------------------------------------------------------------
 
 local scenarios = {
   s01_full_coverage_3x3x2,
@@ -224,6 +258,8 @@ local scenarios = {
   s07_fuel_exhaustion_partial,
   s08_bedrock_floor_stops,
   s09_gravel_inside_box,
+  s10_ender_dump_and_resume,
+  s11_no_chest_no_dump,
 }
 
 local scPassed, scFailed = 0, 0

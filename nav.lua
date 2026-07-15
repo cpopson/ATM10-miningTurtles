@@ -182,6 +182,37 @@ function Nav:refuel(count)
 end
 
 --------------------------------------------------------------------------------
+-- Inventory / placing (thin pass-throughs — the only path to these turtle ops)
+--------------------------------------------------------------------------------
+
+function Nav:select(slot) return self.b.select(slot) end
+function Nav:getSelectedSlot() return self.b.getSelectedSlot() end
+function Nav:getItemCount(slot) return self.b.getItemCount(slot) end
+function Nav:getItemDetail(slot) return self.b.getItemDetail(slot) end
+
+function Nav:place() return self.b.place() end
+function Nav:placeUp() return self.b.placeUp() end
+function Nav:placeDown() return self.b.placeDown() end
+
+function Nav:drop(count) return self.b.drop(count) end
+function Nav:dropUp(count) return self.b.dropUp(count) end
+function Nav:dropDown(count) return self.b.dropDown(count) end
+
+-- countEmptySlots(maxSlot, exceptSlot) -> number of empty inventory slots in
+-- 1..maxSlot (default 16), skipping `exceptSlot` if given. Used to decide when
+-- the loot slots are full.
+function Nav:countEmptySlots(maxSlot, exceptSlot)
+  maxSlot = maxSlot or 16
+  local empty = 0
+  for s = 1, maxSlot do
+    if s ~= exceptSlot and self.b.getItemCount(s) == 0 then
+      empty = empty + 1
+    end
+  end
+  return empty
+end
+
+--------------------------------------------------------------------------------
 -- Core: world-collision-safe movement primitive
 --------------------------------------------------------------------------------
 -- tryMove runs the retry loop shared by all four movers. Pose updates ONLY on a

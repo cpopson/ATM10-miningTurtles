@@ -19,6 +19,14 @@ local function key(x, y, z)
   return x .. "," .. y .. "," .. z
 end
 
+-- An Ender Chest teleports its contents to a shared network (EnderStorage mod).
+-- Match loosely so it works regardless of the exact mod id.
+local function isEnderChest(name)
+  if type(name) ~= "string" then return false end
+  local n = name:lower()
+  return n:find("ender") ~= nil and n:find("chest") ~= nil
+end
+
 -- Mock.new(cfg) -> mock
 --   cfg : optional { fuel = <number|"unlimited">, pose = {x,y,z,h}, floorY = <int|nil> }
 function Mock.new(cfg)
@@ -32,7 +40,9 @@ function Mock.new(cfg)
   self.floorY = cfg.floorY -- any y <= floorY reads as bedrock (cheap infinite floor)
   self.inventory = {} -- slot -> {name, count, fuel}
   self.selected = 1
+  self.maxStack = cfg.maxStack or 64
   self.digLog = {} -- array of {x,y,z,name}
+  self.enderNetwork = {} -- item name -> count deposited through an ender chest
 
   -- nav (and the real turtle API) call the backend as PLAIN functions —
   -- `backend.forward()`, not `backend:forward()` — so there is no implicit
@@ -44,7 +54,9 @@ function Mock.new(cfg)
     "dig", "digUp", "digDown",
     "detect", "detectUp", "detectDown",
     "inspect", "inspectUp", "inspectDown",
-    "getFuelLevel", "refuel", "select", "getItemCount", "getItemDetail",
+    "getFuelLevel", "refuel",
+    "select", "getSelectedSlot", "getItemCount", "getItemDetail",
+    "place", "placeUp", "placeDown", "drop", "dropUp", "dropDown",
   }
   for _, name in ipairs(API) do
     local m = Mock[name]
@@ -167,6 +179,7 @@ function Mock:_dig(x, y, z)
   end
   self.world[key(x, y, z)] = nil
   self.digLog[#self.digLog + 1] = { x = x, y = y, z = z, name = b.name }
+  self:_collect(b.name, 1, b.itemFuel) -- the broken block enters the inventory
   self:settleGravity(x, y, z)
   return true
 end
@@ -267,6 +280,103 @@ function Mock:getItemDetail(slot)
   return { name = s.name, count = s.count }
 end
 
+function Mock:getSelectedSlot()
+  return self.selected
+end
+
+-- Add `count` of `name` to the inventory, mimicking turtle pickup: fill the
+-- selected slot first, then any same-item stack with room, then the first empty
+-- slot. Overflow (all 16 slots full) is dropped on the ground (voided here).
+-- Returns how many items were actually stored.
+function Mock:_collect(name, count, fuel)
+  local remaining = count
+  local order = { self.selected }
+  for s = 1, 16 do
+    if s ~= self.selected then order[#order + 1] = s end
+  end
+  -- pass 1: top up existing same-item stacks (including the selected slot)
+  for _, s in ipairs(order) do
+    if remaining <= 0 then break end
+    local slot = self.inventory[s]
+    if slot and slot.name == name and slot.count < self.maxStack then
+      local add = math.min(self.maxStack - slot.count, remaining)
+      slot.count = slot.count + add
+      remaining = remaining - add
+    end
+  end
+  -- pass 2: fill empty slots
+  for _, s in ipairs(order) do
+    if remaining <= 0 then break end
+    if self.inventory[s] == nil then
+      local add = math.min(self.maxStack, remaining)
+      self.inventory[s] = { name = name, count = add, fuel = fuel }
+      remaining = remaining - add
+    end
+  end
+  return count - remaining
+end
+
+-- place: put the selected item as a block into an air cell. An ender chest
+-- becomes a `container` block that dropped items teleport into.
+function Mock:_place(x, y, z)
+  local slot = self.inventory[self.selected]
+  if not slot or slot.count <= 0 then
+    return false, "No items to place"
+  end
+  if self:_blockAt(x, y, z) ~= nil then
+    return false, "Cannot place block here"
+  end
+  self.world[key(x, y, z)] = {
+    name = slot.name,
+    solid = true,
+    breakable = true,
+    gravity = false,
+    container = isEnderChest(slot.name),
+    itemFuel = slot.fuel, -- preserved so digging it back returns the same item
+  }
+  slot.count = slot.count - 1
+  if slot.count <= 0 then self.inventory[self.selected] = nil end
+  return true
+end
+
+function Mock:place() return self:_place(self:_frontCoord()) end
+function Mock:placeUp() return self:_place(self:_upCoord()) end
+function Mock:placeDown() return self:_place(self:_downCoord()) end
+
+-- drop: eject items from the selected slot. If the target cell is a container
+-- (ender chest), they teleport into the shared network; otherwise they fall in
+-- the world (voided here). Returns true if anything left the slot.
+function Mock:_drop(x, y, z, count)
+  local slot = self.inventory[self.selected]
+  if not slot or slot.count <= 0 then
+    return false, "No items to drop"
+  end
+  local n = count or slot.count
+  if n > slot.count then n = slot.count end
+  local target = self:_blockAt(x, y, z)
+  if target and target.container then
+    self.enderNetwork[slot.name] = (self.enderNetwork[slot.name] or 0) + n
+  end
+  slot.count = slot.count - n
+  if slot.count <= 0 then self.inventory[self.selected] = nil end
+  return true
+end
+
+-- NB: capture coords into locals first — `_drop(self:_frontCoord(), count)`
+-- would truncate the 3 coord returns to 1 (they're not the last arg).
+function Mock:drop(count)
+  local x, y, z = self:_frontCoord()
+  return self:_drop(x, y, z, count)
+end
+function Mock:dropUp(count)
+  local x, y, z = self:_upCoord()
+  return self:_drop(x, y, z, count)
+end
+function Mock:dropDown(count)
+  local x, y, z = self:_downCoord()
+  return self:_drop(x, y, z, count)
+end
+
 --------------------------------------------------------------------------------
 -- World authoring API (test-facing)
 --------------------------------------------------------------------------------
@@ -320,6 +430,18 @@ function Mock:_addItem(slot, name, count, fuelValue)
   self.inventory[slot] = { name = name, count = count, fuel = fuelValue }
 end
 
+-- Give the turtle an ender chest to carry (default slot 16).
+function Mock:_addEnderChest(slot)
+  self.inventory[slot or 16] = { name = "enderstorage:ender_chest", count = 1 }
+end
+
+-- Fill loot slots 1..(count) with `n` of a filler item, to force a dump soon.
+function Mock:_fillSlots(count, n, name)
+  for s = 1, count do
+    self.inventory[s] = { name = name or "minecraft:cobblestone", count = n or self.maxStack }
+  end
+end
+
 --------------------------------------------------------------------------------
 -- Assertion / introspection API (test-facing)
 --------------------------------------------------------------------------------
@@ -341,6 +463,13 @@ function Mock:_wasDug(x, y, z)
     if d.x == x and d.y == y and d.z == z then return true end
   end
   return false
+end
+
+-- Total item count teleported into the ender-chest network.
+function Mock:_enderTotal()
+  local total = 0
+  for _, c in pairs(self.enderNetwork) do total = total + c end
+  return total
 end
 
 return Mock

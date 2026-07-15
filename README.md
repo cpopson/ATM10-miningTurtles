@@ -136,9 +136,13 @@ turtle's own column is the entry/exit shaft; it returns to the start block when
 finished.
 
 `mine.lua` auto-`refuel`s and warns if fuel is short (it needs roughly
-`width × length × depth` plus the return trip). **No inventory dumping yet** — a
-box bigger than the 16 slots can hold will drop the overflow on the ground
-(ender-chest auto-dump is a later milestone).
+`width × length × depth` plus the return trip).
+
+**Ender-chest auto-dump:** put an **Ender Chest in slot 16** and the turtle
+dumps its loot into it in place whenever the other 15 slots fill up, then keeps
+mining — no trip home. Pair that chest with one at your base (feeding a hopper /
+ME import bus / RS importer) and the loot streams straight into storage. With no
+ender chest present it still mines, but overflow drops on the ground once full.
 
 ---
 

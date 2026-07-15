@@ -16,8 +16,10 @@
 -- Fuel: needs roughly width*length*depth + (depth+width+length) fuel. Refuel
 -- first (`refuel all` with coal in a slot) — quarry aborts cleanly if it runs dry.
 --
--- NOTE: no inventory handling yet. Once the turtle's 16 slots fill, further
--- drops are lost on the ground. Fine for small boxes; auto-dump is a later task.
+-- Ender Chest auto-dump: put an Ender Chest in slot 16. When the other 15 slots
+-- fill, the turtle dumps its loot into the chest in place (no trip home) and
+-- keeps going — set the chest's paired chest at your base to feed storage. With
+-- no ender chest, it still mines but overflow drops on the ground once full.
 
 local Nav = require("nav")
 local Quarry = require("quarry")
@@ -54,6 +56,13 @@ if fuel ~= "unlimited" and fuel < est then
     reset()
     return
   end
+end
+
+local chest = nav:getItemDetail(16)
+if chest and chest.name:lower():find("ender") and chest.name:lower():find("chest") then
+  print("Ender Chest in slot 16 - will auto-dump loot when full.")
+else
+  print("No ender chest in slot 16 - overflow drops on the ground once full.")
 end
 
 print(string.format("Quarrying %dx%d, %d deep (~%d cells)...", W, L, D, W * L * D))
