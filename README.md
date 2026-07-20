@@ -39,12 +39,15 @@ Three principles drive every design decision here:
 | `probe.lua`       | Real-turtle smoke test: a round trip that must close to origin              | ✅ done  |
 | `update.lua`      | Pulls the latest files from GitHub onto an in-game computer/turtle          | ✅ done  |
 | `quarry.lua`      | Quarry pattern generator (single-turtle box clear)                          | ✅ done  |
-| `test_quarry.lua` | 9-scenario suite for `quarry` against the mock world                        | ✅ 9/9   |
+| `test_quarry.lua` | 11-scenario suite for `quarry` (coverage, dump, edge cases)                  | ✅ 11/11 |
 | `mine.lua`        | In-game driver: run a quarry on a turtle (`mine <w> <l> <d>`)                | ✅ done  |
 | `branch.lua`      | Branch/strip pattern generator                                              | ⬜ todo  |
 | `tunnel.lua`      | Tunnel pattern generator                                                    | ⬜ todo  |
-| `comms.lua`       | rednet messaging protocol (shared by control + turtles)                     | ⬜ todo  |
-| `coordinator.lua` | Fleet dispatcher: partition jobs, assign, track, reassign on failure        | ⬜ todo  |
+| `comms.lua`       | rednet messaging protocol (shared by control + turtles); injectable transport | ✅ done |
+| `rednet_transport.lua` | Real rednet/os adapter for `comms` (the only file touching `rednet`)    | ✅ done  |
+| `mockbus.lua`     | In-memory deterministic message bus for testing `comms`                     | ✅ done  |
+| `test_comms.lua`  | 9-scenario suite for `comms` against the mock bus                            | ✅ 9/9   |
+| `coordinator.lua` | Fleet dispatcher: partition jobs, assign, track, reassign on failure        | ⬜ next  |
 | `ui.lua`          | Basalt monitor UI (dashboard + job setup)                                   | ⬜ todo  |
 | `state.lua`       | Disk persistence + reboot/chunk-unload recovery                             | ⬜ todo  |
 
@@ -146,9 +149,89 @@ ender chest present it still mines, but overflow drops on the ground once full.
 
 ---
 
+## Messaging (comms)
+
+`comms.lua` is the typed message pipe between the control computer and the
+turtles. Just as `nav` hides `turtle`, `comms` hides `rednet` behind an
+injectable transport, so it's tested off-Minecraft against `mockbus.lua`.
+In-game it runs over a real modem via `rednet_transport.lua`.
+
+### Setup (in-game)
+
+Each machine needs a **modem** (wireless or ender) attached. Build a transport,
+then a `comms`:
+
+```lua
+local Comms = require("comms")
+local RednetTransport = require("rednet_transport")
+
+-- open the modem on the side it's attached to ("left"/"right"/"top"/...)
+local transport = RednetTransport.new("right")
+
+local comms = Comms.new(transport, { role = "control" })  -- control computer
+-- or:
+local comms = Comms.new(transport, { role = "turtle" })   -- a turtle
+```
+
+All fleet traffic shares one named protocol (default `"ccfleet"`; override with
+`opts.protocol`). Turtles are addressed by `os.getComputerID()`.
+
+### The six messages (with their wrappers)
+
+| Message    | Direction        | Wrapper                                     |
+| ---------- | ---------------- | ------------------------------------------- |
+| `REGISTER` | turtle → control | `comms:register(pose)` (broadcast)          |
+| `ASSIGN`   | control → turtle | `comms:assign(turtleId, job)`               |
+| `PROGRESS` | turtle → control | `comms:progress(pose, fuel, mined, jobId)`  |
+| `DONE`     | turtle → control | `comms:done(jobId)`                         |
+| `ERROR`    | turtle → control | `comms:reportError(reason, jobId)`          |
+| `CONTROL`  | control → turtle | `comms:control(id, cmd)` / `comms:controlAll(cmd)` |
+
+`cmd` is one of `pause` / `resume` / `stop` / `return` (see `Comms.CONTROLS`).
+
+### Receiving
+
+`comms:receive(timeout)` has a three-way return, so a receive loop never hangs
+and bad packets are visibly rejected rather than crashing:
+
+```lua
+local msg, err = comms:receive(1)         -- wait up to 1 second
+if msg then
+  -- msg = { v, type, from, to, seq, payload }
+  handle(msg.from, msg.type, msg.payload)
+elseif err then
+  print("dropped bad message: " .. err)   -- failed validation
+else
+  -- timeout: nothing arrived — loop again or do other work
+end
+```
+
+### The typical handshake
+
+1. A turtle boots and **broadcasts** `REGISTER` — it may not know the control
+   id yet, so it learns it from the first `ASSIGN`/`CONTROL` it receives.
+2. Control replies with `ASSIGN` carrying a job `{ id, pattern, region, origin }`.
+3. The turtle sends `PROGRESS` every few blocks (this doubles as its heartbeat),
+   then `DONE` when its region is clear, or `ERROR` if it gets stuck.
+4. Control can steer one turtle with `control(id, cmd)` or the whole fleet with
+   `controlAll(cmd)`.
+
+### What comms does and doesn't do
+
+`comms` is a **stateless codec + pipe**. Its one guarantee is that `receive`
+never blocks past its timeout. It does **not** retry, ack, or track liveness —
+that's the coordinator's job (idempotent, `job.id`-keyed re-assign; `PROGRESS`
+as the heartbeat it times out on). Keeping that logic out of `comms` is what
+makes `comms` deterministic and fully sim-testable.
+
+---
+
 ## Design specs for upcoming work
 
 ### Message protocol (rednet)
+
+> **Implemented** in `comms.lua` — see [Messaging (comms)](#messaging-comms)
+> above for the API. This is the payload reference.
 
 Control computer = server; turtles = clients keyed by `os.getComputerID()`;
 communication over a single named protocol.
@@ -189,9 +272,10 @@ communication over a single named protocol.
 ## Roadmap
 
 1. ✅ `nav` + `mockturtle` + `test_nav` (12/12) + `probe` + `update`
-2. ⬜ Quarry pattern generator (+ sim tests) ← **next**
-3. ⬜ Coordinator + comms protocol (fleet skeleton talks end-to-end)
-4. ⬜ Branch + tunnel patterns (+ tests)
-5. ⬜ Basalt UI (dashboard + job setup)
-6. ⬜ State persistence + reboot recovery
-7. ⬜ Advanced Peripherals integration (Geo Scanner ore-seeking, ME/RS auto-dump)
+2. ✅ Quarry pattern generator (+ sim tests) + `mine` driver + ender-chest auto-dump
+3. ✅ Comms protocol (`comms` + `rednet_transport` + `mockbus` + `test_comms` 9/9)
+4. ⬜ Coordinator: partition + assign + track + reassign (fleet talks end-to-end) ← **next**
+5. ⬜ Branch + tunnel patterns (+ tests)
+6. ⬜ Basalt UI (dashboard + job setup)
+7. ⬜ State persistence + reboot recovery
+8. ⬜ Advanced Peripherals integration (Geo Scanner ore-seeking, ME/RS auto-dump)
