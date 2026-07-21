@@ -47,9 +47,20 @@ Three principles drive every design decision here:
 | `rednet_transport.lua` | Real rednet/os adapter for `comms` (the only file touching `rednet`)    | ✅ done  |
 | `mockbus.lua`     | In-memory deterministic message bus for testing `comms`                     | ✅ done  |
 | `test_comms.lua`  | 9-scenario suite for `comms` against the mock bus                            | ✅ 9/9   |
-| `coordinator.lua` | Fleet dispatcher: partition jobs, assign, track, reassign on failure        | ⬜ next  |
-| `ui.lua`          | Basalt monitor UI (dashboard + job setup)                                   | ⬜ todo  |
-| `state.lua`       | Disk persistence + reboot/chunk-unload recovery                             | ⬜ todo  |
+| `partition.lua`   | Pure box → column-strip splitter (structural collision avoidance)           | ✅ done  |
+| `test_partition.lua` | 8-scenario suite for `partition`                                         | ✅ 8/8   |
+| `coordinator.lua` | Control station: box queue, assign, track, reassign, controls, persistence  | ✅ done  |
+| `test_coordinator.lua` | 21-scenario suite for `coordinator`                                    | ✅ 21/21 |
+| `worker.lua`      | Turtle side: register, run quarry, report, pause/stop mid-mine              | ✅ done  |
+| `test_worker.lua` | 13-scenario suite for `worker`                                              | ✅ 13/13 |
+| `test_fleet.lua`  | End-to-end: coordinator + N workers clear a box (+ reassign)                | ✅ 3/3   |
+| `store.lua` / `mockstore.lua` | Injectable disk persistence + in-memory test store              | ✅ done  |
+| `test_store.lua`  | 6-scenario suite for the store contract                                     | ✅ 6/6   |
+| `jobspec.lua`     | Pure job-setup validation (dims/pattern/count)                              | ✅ done  |
+| `test_setup.lua`  | 7-scenario suite for `jobspec`                                              | ✅ 7/7   |
+| `control.lua` / `setup.lua` | Interactive control station + on-screen job setup (plain terminal) | ✅ done  |
+| `fleet.lua`       | In-game turtle driver (`fleet <x> <y> <z>`)                                 | ✅ done  |
+| `ui.lua`          | Basalt monitor UI (mouse/buttons) — polish over the plain-terminal station  | ⬜ todo  |
 
 ---
 
@@ -226,6 +237,38 @@ makes `comms` deterministic and fully sim-testable.
 
 ---
 
+## The control station
+
+Run `control` on a computer with a modem. It walks an **on-screen job setup**
+(pattern, box dimensions, origin, turtle count — add multiple boxes to a queue),
+or offers to **resume** a saved job if the computer crashed mid-run. Then start
+`fleet <x> <y> <z>` on each turtle.
+
+While it runs, the dashboard shows every turtle (label or `#id`, state, fuel,
+mined, job) and responds to live keys:
+
+| Key | Action |
+| --- | ------ |
+| `P` | **Pause** the whole fleet (turtles park mid-strip; reversible) |
+| `R` | **Resume** |
+| `S` | **Stop** (terminal — turtles abort where they are) |
+| `H` | **Home** — return all turtles, then stop |
+| `Q` | Quit the station (turtles keep their last command) |
+
+The coordinator saves its job-state to disk every pump, so a control-computer
+reboot resumes automatically; turtles re-sync from their next heartbeat.
+
+**Multi-box caveat:** each turtle mines relative to its own position, so a queue
+of boxes tiles cleanly only when the boxes share an origin region (re-runs,
+stacked layers). Boxes at *different* physical locations need the turtles
+repositioned + restarted between them — full relocation waits on GPS.
+
+Concurrency uses `parallel.waitForAny(comms, input, render)` — the CC-safe way to
+receive rednet, read keys, and redraw at once without `os.sleep` dropping message
+events. A **Basalt** mouse/button UI is a later polish pass over this.
+
+---
+
 ## Design specs for upcoming work
 
 ### Message protocol (rednet)
@@ -274,8 +317,9 @@ communication over a single named protocol.
 1. ✅ `nav` + `mockturtle` + `test_nav` (12/12) + `probe` + `update`
 2. ✅ Quarry pattern generator (+ sim tests) + `mine` driver + ender-chest auto-dump
 3. ✅ Comms protocol (`comms` + `rednet_transport` + `mockbus` + `test_comms` 9/9)
-4. ⬜ Coordinator: partition + assign + track + reassign (fleet talks end-to-end) ← **next**
-5. ⬜ Branch + tunnel patterns (+ tests)
-6. ⬜ Basalt UI (dashboard + job setup)
-7. ⬜ State persistence + reboot recovery
-8. ⬜ Advanced Peripherals integration (Geo Scanner ore-seeking, ME/RS auto-dump)
+4. ✅ Coordinator: partition + assign + track + reassign (`test_coordinator` 21/21, `test_fleet` 3/3)
+5. ✅ Control station: multi-box queue, live Pause/Resume/Stop/Return, on-screen job setup, reboot persistence (`store` + `jobspec`)
+6. ⬜ Branch + tunnel patterns (+ tests) ← **next**
+7. ⬜ Basalt UI (mouse/buttons) over the plain-terminal station
+8. ⬜ Turtle-side progress persistence (resume a strip mid-way, not from the top)
+9. ⬜ Advanced Peripherals integration (Geo Scanner ore-seeking, ME/RS auto-dump)

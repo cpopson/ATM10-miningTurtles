@@ -1,31 +1,29 @@
--- control.lua — in-game control-computer driver. Runs the Coordinator over
--- rednet, partitions a box across the turtles that register, and prints a live
--- per-turtle status dashboard.
+-- control.lua — the interactive fleet control station.
 --
--- Usage (on a computer with a wireless/ender modem):
---   control <width> <length> <depth> <turtleCount>
---   e.g.  control 6 4 5 3
+-- On a computer with a wireless/ender modem:
+--   control            (runs the on-screen setup, or offers to resume a saved job)
 --
--- Deployment (GPS-free): the coordinator assigns each strip to the turtle whose
--- reported position matches the strip's corner. Since turtles have no shared
--- coordinate frame without GPS, you tell each turtle its position when you start
--- `fleet` on it (see fleet.lua). Use the SAME frame here: the box's top-NW
--- corner is (0, 1, 0) by convention, extending +X (width) and +Z (length) and
--- down (depth). Place turtle i one block above the top corner of strip i and
--- start it with those coordinates.
+-- Live keyboard controls while running:
+--   [P]ause  [R]esume  [S]top  [H]ome (return)  [Q]uit
+--
+-- Concurrency: parallel.waitForAny(commsLoop, inputLoop, renderLoop). This is
+-- the CC-safe way to receive rednet AND read keys AND render at once -- each
+-- pulled event is offered to every coroutine, so a sleeping renderLoop does NOT
+-- starve the commsLoop's rednet.receive (unlike a single loop with os.sleep,
+-- which drops the message events). Coroutines are cooperative, so coordinator
+-- mutations never interleave.
+--
+-- Persistence: coordinator state is saved to disk each pump, so a crash/reboot
+-- resumes where it left off.
 
 local Comms = require("comms")
 local RT = require("rednet_transport")
 local Coordinator = require("coordinator")
+local Store = require("store")
+local Setup = require("setup")
 local Config = require("config")
 
-local args = { ... }
-local W, L, D = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
-local expect = tonumber(args[4])
-if not (W and L and D and expect) then
-  print("usage: control <width> <length> <depth> <turtleCount>")
-  return
-end
+local STATE = "coordinator"
 
 local function findModem()
   for _, side in ipairs({ "top", "bottom", "left", "right", "front", "back" }) do
@@ -41,16 +39,46 @@ end
 
 local comms = Comms.new(RT.new(side), { role = "control", protocol = Config.protocol })
 local clock = function() return os.epoch("utc") / 1000 end -- seconds
-local box = { id = "quarry", origin = { x = 0, y = 1, z = 0 }, width = W, length = L, depth = D }
+local store = Store.new()
 local coord = Coordinator.new(comms, {
-  clock = clock, box = box, expect = expect,
+  clock = clock, store = store, stateName = STATE,
   staleAfter = Config.staleAfter, maxAttempts = Config.maxAttempts,
 })
 
+-- Startup: resume a saved job, or run setup for a new one.
+local saved = store.load(STATE)
+local resumed = false
+if saved and saved.phase == "running" then
+  term.write("Saved job found. [R]esume or [N]ew? ")
+  if read():lower() ~= "n" then
+    coord:restore()
+    resumed = true
+  end
+end
+if not resumed then
+  store.delete(STATE)
+  local job = Setup.run()
+  coord.expect = job.expect
+  for _, box in ipairs(job.boxes) do coord:enqueue(box) end
+  print(("Waiting for %d turtles to register..."):format(job.expect))
+end
+
+--------------------------------------------------------------------------------
+-- Rendering (in-place, flicker-free; hint bar pinned to the bottom row)
+--------------------------------------------------------------------------------
+
 local function render()
   local s = coord:getStatus()
+  local w, h = term.getSize()
+  local ctrl = s.stopped and " [STOPPED]" or (s.paused and " [PAUSED]" or "")
+  local jc, done = 0, 0
+  for _, j in pairs(s.jobs) do
+    jc = jc + 1
+    if j.status == "done" then done = done + 1 end
+  end
   local lines = {
-    string.format("cc-fleet-miner  %dx%d deep %d  [%s]", W, L, D, s.phase),
+    "cc-fleet-miner  " .. s.phase .. ctrl,
+    string.format("queued:%d  strips:%d (%d done)  failed:%d", s.boxesQueued, jc, done, s.failedCount),
     string.format("%-12s %-9s %-6s %-6s %s", "turtle", "state", "fuel", "mined", "job"),
   }
   local ids = {}
@@ -58,31 +86,48 @@ local function render()
   table.sort(ids)
   for _, id in ipairs(ids) do
     local t = s.turtles[id]
-    local name = t.label or ("#" .. id) -- label set via `label set <name>` on the turtle
+    local name = t.label or ("#" .. id)
     lines[#lines + 1] = string.format("%-12s %-9s %-6s %-6s %s",
       name, t.state or "?", tostring(t.fuel or "-"), tostring(t.mined or 0), tostring(t.job or "-"))
   end
-  -- Repaint in place: overwrite each row padded to the full width, with no
-  -- term.clear() between frames -- so the dashboard updates without the blink
-  -- that a full-screen wipe causes. Blank any leftover rows below.
-  local w, h = term.getSize()
+  local hint = "[P]ause [R]esume [S]top [H]ome [Q]uit"
   for i = 1, h do
     term.setCursorPos(1, i)
-    local line = lines[i] or ""
+    local line = (i == h) and hint or (lines[i] or "")
     if #line < w then line = line .. string.rep(" ", w - #line) end
     term.write(string.sub(line, 1, w))
   end
 end
 
-print(string.format("Control up. Waiting for %d turtles to register...", expect))
-render()
--- Pace the loop by BLOCKING on the receive (coord:step(1)), never os.sleep --
--- in CC os.sleep discards the rednet events carrying PROGRESS/REGISTER, which
--- would freeze the dashboard and stop reassignment. step(1) waits up to 1s for a
--- message (returning early when one arrives), processes it, then we redraw.
-while not coord:isComplete() do
-  coord:step(1)
-  render()
+--------------------------------------------------------------------------------
+-- The three concurrent loops
+--------------------------------------------------------------------------------
+
+local function commsLoop()
+  while not coord:isComplete() do coord:step(1) end
 end
+
+local function inputLoop()
+  while true do
+    local _, key = os.pullEvent("key")
+    if key == keys.p then coord:pauseAll()
+    elseif key == keys.r then coord:resumeAll()
+    elseif key == keys.s then coord:stopAll()
+    elseif key == keys.h then coord:returnAll()
+    elseif key == keys.q then return end
+  end
+end
+
+local function renderLoop()
+  while true do
+    render()
+    os.sleep(0.3)
+  end
+end
+
 render()
-print("All strips complete.")
+parallel.waitForAny(commsLoop, inputLoop, renderLoop)
+render()
+term.setCursorPos(1, select(2, term.getSize()))
+print("")
+print(coord:isComplete() and "Run complete." or "Station stopped.")

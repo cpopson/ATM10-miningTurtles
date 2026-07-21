@@ -214,6 +214,72 @@ local function s09_reregisters_while_idle()
 end
 
 --------------------------------------------------------------------------------
+-- 10. PAUSE mid-mine parks the turtle; RESUME continues to completion
+--------------------------------------------------------------------------------
+local function s10_pause_then_resume_midmine()
+  local bus = MockBus.new()
+  local control = wire(bus, 0, { role = "control" })
+  local w = Worker.new(wire(bus, 1, { role = "turtle" }), stubNav(), stubFactory(20, "ok"),
+    { progressEvery = 8 })
+  control:assign(1, { id = "J1", width = 1, length = 1, depth = 1 })
+  control:control(1, "pause")  -- queued after the ASSIGN
+  control:control(1, "resume")
+  eq(w:step(1), "done", "s10: completes across a pause/resume")
+  ok(w.pauses >= 1, "s10: entered and left a pause")
+  local c = drainCounts(control)
+  ok((c.ERROR or 0) == 0, "s10: no error on pause/resume")
+end
+
+--------------------------------------------------------------------------------
+-- 11. STOP received during a pause aborts (no error)
+--------------------------------------------------------------------------------
+local function s11_stop_during_pause_aborts()
+  local bus = MockBus.new()
+  local control = wire(bus, 0, { role = "control" })
+  local w = Worker.new(wire(bus, 1, { role = "turtle" }), stubNav(), stubFactory(20, "ok"),
+    { progressEvery = 8 })
+  control:assign(1, { id = "J1", width = 1, length = 1, depth = 1 })
+  control:control(1, "pause")
+  control:control(1, "stop")
+  eq(w:step(1), "stopped", "s11: stop during pause aborts")
+  ok(w:isStopped(), "s11: isStopped")
+  eq(w.abort, "stop", "s11: abort reason stop")
+  local c = drainCounts(control)
+  ok((c.ERROR or 0) == 0, "s11: no error on a user stop")
+end
+
+--------------------------------------------------------------------------------
+-- 12. RETURN during a pause sends the turtle home
+--------------------------------------------------------------------------------
+local function s12_return_during_pause_goes_home()
+  local bus = MockBus.new()
+  local control = wire(bus, 0, { role = "control" })
+  local nav = stubNav({ x = 0, y = 1, z = 0, h = 0 })
+  local w = Worker.new(wire(bus, 1, { role = "turtle" }), nav, stubFactory(20, "ok"),
+    { progressEvery = 8 })
+  control:assign(1, { id = "J1", width = 1, length = 1, depth = 1 })
+  control:control(1, "pause")
+  control:control(1, "return")
+  eq(w:step(1), "stopped", "s12: return during pause -> stopped")
+  ok(nav.returnCalls >= 1, "s12: went home")
+end
+
+--------------------------------------------------------------------------------
+-- 13. the pause wait re-arms across multiple pause/resume cycles
+--------------------------------------------------------------------------------
+local function s13_pause_resume_twice()
+  local bus = MockBus.new()
+  local control = wire(bus, 0, { role = "control" })
+  local w = Worker.new(wire(bus, 1, { role = "turtle" }), stubNav(), stubFactory(20, "ok"),
+    { progressEvery = 8 })
+  control:assign(1, { id = "J1", width = 1, length = 1, depth = 1 })
+  control:control(1, "pause"); control:control(1, "resume")
+  control:control(1, "pause"); control:control(1, "resume")
+  eq(w:step(1), "done", "s13: completes across two pause cycles")
+  eq(w.pauses, 2, "s13: two pause/resume cycles counted")
+end
+
+--------------------------------------------------------------------------------
 
 local scenarios = {
   s01_register_broadcasts,
@@ -225,6 +291,10 @@ local scenarios = {
   s07_dedup_duplicate_assign,
   s08_ignores_sibling_broadcasts,
   s09_reregisters_while_idle,
+  s10_pause_then_resume_midmine,
+  s11_stop_during_pause_aborts,
+  s12_return_during_pause_goes_home,
+  s13_pause_resume_twice,
 }
 
 local scPassed, scFailed = 0, 0

@@ -31,6 +31,8 @@ function Worker.new(comms, nav, quarryFactory, opts)
   self.chestSlot = opts.chestSlot or 16
   self.jobOpts = opts.jobOpts
   self.label = opts.label -- os.getComputerLabel(), read by the driver; may be nil
+  self.pauseTimeout = opts.pauseTimeout or 1 -- receive block while parked on PAUSE
+  self.pauses = 0        -- number of PAUSE->RESUME cycles (for tests)
   self.seen = {}      -- jobId -> "running" | "done" | "failed"
   self.current = nil
   self.state = "idle" -- idle | mining | stopped
@@ -49,22 +51,50 @@ function Worker:isStopped()
   return self.state == "stopped"
 end
 
+-- Classify a received message into a control action for the mining poll.
+function Worker:_controlAction(m)
+  if not (m and m.type == Comms.TYPES.CONTROL) then return nil end
+  local cmd = m.payload.cmd
+  if cmd == Comms.CONTROLS.STOP or cmd == Comms.CONTROLS.RETURN then
+    self.abort = cmd
+    return "abort"
+  elseif cmd == Comms.CONTROLS.PAUSE then
+    return "pause"
+  elseif cmd == Comms.CONTROLS.RESUME then
+    return "resume"
+  end
+  return nil
+end
+
+-- Park mid-strip on a PAUSE: the quarry stays blocked here (turtle stops moving)
+-- until RESUME (-> true, continue) or STOP/RETURN (-> false, abort). Blocks on
+-- receive (never os.sleep, which would drop the CONTROL event in-game).
+function Worker:_waitWhilePaused()
+  self.state = "paused"
+  while true do
+    local m = self.comms:receive(self.pauseTimeout)
+    local a = self:_controlAction(m)
+    if a == "abort" then return false end
+    if a == "resume" then
+      self.state = "mining"
+      self.pauses = self.pauses + 1
+      return true
+    end
+    -- timeout or irrelevant message: keep waiting (turtle idle, quarry suspended)
+  end
+end
+
 -- Build the onProgress hook for a running job: throttled PROGRESS + a CONTROL
--- stop/return poll that aborts the quarry (by returning false).
+-- poll. STOP/RETURN abort (return false); PAUSE parks until RESUME.
 function Worker:_makeOnProgress(jobId)
   local counter = 0
   return function(info)
     counter = counter + 1
     if counter % self.progressEvery == 0 then
       self.comms:progress(info.pose, info.fuel, info.cells, jobId)
-      local m = self.comms:receive(0) -- non-blocking CONTROL poll
-      if m and m.type == Comms.TYPES.CONTROL then
-        local cmd = m.payload.cmd
-        if cmd == Comms.CONTROLS.STOP or cmd == Comms.CONTROLS.RETURN then
-          self.abort = cmd
-          return false
-        end
-      end
+      local a = self:_controlAction(self.comms:receive(0)) -- non-blocking poll
+      if a == "abort" then return false end
+      if a == "pause" then return self:_waitWhilePaused() end
     end
     return true
   end
@@ -136,8 +166,8 @@ function Worker:_onControl(cmd)
     if self.home then self.nav:returnTo(self.home) end
     self.state = "stopped"
   end
-  -- pause/resume have no effect while idle (there's no job to suspend); mid-job
-  -- pause is a known limitation deferred to the persistence milestone.
+  -- pause/resume have no effect while idle (there's no job to suspend); a PAUSE
+  -- during a running quarry IS honored, mid-strip, via _waitWhilePaused.
   return "control"
 end
 

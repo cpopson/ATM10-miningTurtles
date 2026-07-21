@@ -39,6 +39,12 @@ local FILES = {
   "test_coordinator.lua",
   "test_worker.lua",
   "test_fleet.lua",
+  "store.lua",
+  "mockstore.lua",
+  "test_store.lua",
+  "jobspec.lua",
+  "setup.lua",
+  "test_setup.lua",
 }
 
 local function fetch(name)

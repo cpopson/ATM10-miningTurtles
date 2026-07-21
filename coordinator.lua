@@ -26,25 +26,109 @@ function Coordinator.new(comms, opts)
   opts = opts or {}
   local self = setmetatable({}, Coordinator)
   self.comms = comms
-  self.box = opts.box
-  self.strips = opts.strips -- fixed strip count; nil = one strip per rostered turtle
   self.staleAfter = opts.staleAfter or 5
   self.maxAttempts = opts.maxAttempts or 3
   self.expect = opts.expect
   self._hasClock = opts.clock ~= nil
   self._stepCount = 0
   self.clock = opts.clock or function() return self._stepCount end
-  self.roster = {}  -- id -> { id, pose, at }
-  self.status = {}  -- id -> { state, pos, fuel, mined, job, lastSeen }
-  self.jobs = {}    -- jobId -> { job, status, assignedTo, attempts }
-  self.queue = {}   -- FIFO of pending jobIds
+  self.roster = {}   -- id -> { id, pose, label, at }
+  self.status = {}   -- id -> { state, pos, fuel, mined, job, label, lastSeen }
+  self.jobs = {}     -- jobId -> { job, status, assignedTo, attempts } (current box)
+  self.queue = {}    -- FIFO of pending jobIds (current box)
+  self.boxQueue = {} -- FIFO of pending box records
+  self.currentBox = nil
+  self._boxSeq = 0
   self.phase = "gather" -- gather | running | complete
+  self.paused = false
+  self.stopped = false
+  self.failedCount = 0
+  self.store = opts.store         -- injected persistence (nil = no persistence)
+  self.stateName = opts.stateName or "coordinator"
+  self._dirty = false
   if opts.turtles then
     for _, id in ipairs(opts.turtles) do
       self.status[id] = { state = "idle", lastSeen = self.clock() }
     end
   end
+  -- Backward-compat: a single opts.box becomes a queue-of-one. Do NOT flush here
+  -- -- if the driver calls restore(), the on-disk state must win over this seed.
+  if opts.box then
+    local b = opts.box
+    b.pattern = b.pattern or "quarry"
+    b.strips = b.strips or opts.strips
+    b.id = b.id or self:_nextBoxId()
+    self.boxQueue[1] = b
+  end
   return self
+end
+
+function Coordinator:_nextBoxId()
+  self._boxSeq = self._boxSeq + 1
+  return "box" .. self._boxSeq
+end
+
+--------------------------------------------------------------------------------
+-- Persistence plumbing (no-op when no store is injected)
+--------------------------------------------------------------------------------
+
+function Coordinator:_markDirty()
+  self._dirty = true
+end
+
+-- The durable job-state snapshot (roster/status are rebuilt from live traffic).
+function Coordinator:_snapshot()
+  return {
+    boxQueue = self.boxQueue,
+    currentBox = self.currentBox,
+    jobs = self.jobs,
+    queue = self.queue,
+    phase = self.phase,
+    paused = self.paused,
+    stopped = self.stopped,
+    boxSeq = self._boxSeq,
+    failedCount = self.failedCount,
+    expect = self.expect,
+  }
+end
+
+function Coordinator:_flush()
+  if self.store and self._dirty then
+    self.store.save(self.stateName, self:_snapshot())
+    self._dirty = false
+  end
+end
+
+-- Reload persisted job-state after a control-computer reboot. Call right after
+-- new(), before any step(). Returns true if state was restored, false if fresh.
+-- roster/status are NOT persisted -- they rebuild from re-REGISTER/PROGRESS; we
+-- only seed a status entry per in-flight job so a dead assignee still ages to
+-- stale (the resync itself happens in _handle: a still-mining turtle re-attaches
+-- via PROGRESS, a rebooted one gets its job re-ASSIGNed on REGISTER).
+function Coordinator:restore()
+  if not self.store then return false end
+  local snap = self.store.load(self.stateName)
+  if not snap then return false end
+  self.boxQueue = snap.boxQueue or {}
+  self.currentBox = snap.currentBox
+  self.jobs = snap.jobs or {}
+  self.queue = snap.queue or {}
+  self.phase = snap.phase or "gather"
+  self.paused = snap.paused or false
+  self.stopped = snap.stopped or false
+  self._boxSeq = snap.boxSeq or 0
+  self.failedCount = snap.failedCount or 0
+  if snap.expect ~= nil then self.expect = snap.expect end
+  self.roster = {}
+  self.status = {}
+  local now = self.clock()
+  for jobId, j in pairs(self.jobs) do
+    if (j.status == "assigned" or j.status == "mining") and j.assignedTo then
+      self.status[j.assignedTo] = { state = j.status, job = jobId, lastSeen = now }
+    end
+  end
+  self._dirty = false
+  return true
 end
 
 --------------------------------------------------------------------------------
@@ -86,6 +170,16 @@ function Coordinator:_inQueue(jobId)
   return false
 end
 
+-- First in-flight (assigned/mining) job currently held by turtle `id`, or nil.
+function Coordinator:_jobAssignedTo(id)
+  for jobId, j in pairs(self.jobs) do
+    if j.assignedTo == id and (j.status == "assigned" or j.status == "mining") then
+      return jobId
+    end
+  end
+  return nil
+end
+
 function Coordinator:_poseMatches(id, origin)
   local r = self.roster[id]
   if not r or not r.pose then return false end
@@ -124,13 +218,29 @@ end
 -- Dispatch + assignment
 --------------------------------------------------------------------------------
 
--- Partition the box across the current roster and queue the jobs.
+-- Add a box to the run queue. Does not dispatch (that happens via step's
+-- auto-dispatch or _advance). Returns the box id.
+function Coordinator:enqueue(box)
+  box.pattern = box.pattern or "quarry"
+  box.id = box.id or self:_nextBoxId()
+  self.boxQueue[#self.boxQueue + 1] = box
+  self:_markDirty()
+  self:_flush()
+  return box.id
+end
+
+-- Partition the current box across the roster and queue its strip-jobs, popping
+-- the next box from boxQueue if none is current. One strip per turtle by default;
+-- box.strips caps it lower so surplus turtles stay as reassignment spares.
 function Coordinator:dispatch()
-  assert(self.box, "coordinator: no box configured")
-  -- One strip per turtle by default; opts.strips caps it lower so surplus
-  -- turtles stay as reassignment spares.
-  local n = self.strips or self:_rosterCount()
-  local jobs = Partition.split(self.box, n)
+  if self.stopped then return 0 end
+  if not self.currentBox then
+    if #self.boxQueue == 0 then return 0 end
+    self.currentBox = table.remove(self.boxQueue, 1)
+  end
+  local box = self.currentBox
+  local n = box.strips or self:_rosterCount()
+  local jobs = Partition.split(box, n)
   self.jobs = {}
   self.queue = {}
   for _, job in ipairs(jobs) do
@@ -138,12 +248,38 @@ function Coordinator:dispatch()
     self.queue[#self.queue + 1] = job.id
   end
   self.phase = "running"
-  self:_assignQueued()
+  if not self.paused then self:_assignQueued() end
+  self:_markDirty()
   return #jobs
+end
+
+-- True when every strip of the current box is terminal (done/failed/stopped).
+function Coordinator:_currentBoxTerminal()
+  if not self.currentBox then return false end
+  if self:_jobCount() == 0 then return false end
+  for _, j in pairs(self.jobs) do
+    local s = j.status
+    if s ~= "done" and s ~= "failed" and s ~= "stopped" then return false end
+  end
+  return true
+end
+
+-- When the current box finishes, pop+dispatch the next box, or mark complete.
+function Coordinator:_advance()
+  if self.paused or self.stopped then return end
+  if not self:_currentBoxTerminal() then return end
+  if #self.boxQueue > 0 then
+    self.currentBox = nil
+    self:dispatch()
+  else
+    self.phase = "complete"
+  end
+  self:_markDirty()
 end
 
 -- Assign as many queued jobs as there are free turtles.
 function Coordinator:_assignQueued()
+  if self.paused or self.stopped then return end
   local remaining = {}
   for _, jobId in ipairs(self.queue) do
     local rec = self.jobs[jobId]
@@ -156,6 +292,7 @@ function Coordinator:_assignQueued()
       st.state = "assigned"
       st.job = jobId
       st.lastSeen = self.clock()
+      self:_markDirty() -- only a real assignment dirties durable state
     else
       remaining[#remaining + 1] = jobId
     end
@@ -170,12 +307,15 @@ function Coordinator:_reassign(jobId)
   j.attempts = j.attempts + 1
   if j.attempts > self.maxAttempts then
     j.status = "failed" -- permanent, so isComplete can't hang
+    self.failedCount = self.failedCount + 1
+    self:_markDirty()
     return
   end
   j.status = "pending" -- keep assignedTo as the previous assignee (for exclusion)
   if not self:_inQueue(jobId) then
     self.queue[#self.queue + 1] = jobId
   end
+  self:_markDirty()
   self:_assignQueued()
 end
 
@@ -193,7 +333,20 @@ function Coordinator:_handle(msg)
     st.state = "idle"
     st.label = msg.payload.label
     st.lastSeen = now
-    if self.phase == "running" then self:_assignQueued() end
+    -- Resync after a coordinator reboot: if this turtle still holds an in-flight
+    -- job (persisted), re-ASSIGN the SAME job.id to it (idempotent). Otherwise
+    -- let a free turtle pick up queued work.
+    local held = self:_jobAssignedTo(from)
+    if held and not self.paused and not self.stopped then
+      local rec = self.jobs[held]
+      self.comms:assign(from, rec.job)
+      rec.status = "assigned"
+      rec.assignedTo = from
+      st.state = "assigned"
+      st.job = held
+    elseif self.phase == "running" then
+      self:_assignQueued()
+    end
   elseif msg.type == T.PROGRESS then
     local st = self:_ensureStatus(from)
     st.state = "mining"
@@ -225,9 +378,12 @@ function Coordinator:_handle(msg)
     end
   end
   -- unknown types ignored (harmless sibling traffic)
+  self:_markDirty()
 end
 
 function Coordinator:_livenessSweep()
+  -- Don't reassign a deliberately paused/stopped fleet whose turtles stop pinging.
+  if self.paused or self.stopped then return end
   local now = self.clock()
   for _, st in pairs(self.status) do
     if (st.state == "mining" or st.state == "assigned") and st.lastSeen
@@ -237,6 +393,45 @@ function Coordinator:_livenessSweep()
     end
   end
 end
+
+--------------------------------------------------------------------------------
+-- Global controls (broadcast a CONTROL command + set the run flag + persist)
+--------------------------------------------------------------------------------
+
+-- Reversible hold: no new strips dispatched, no box advance, liveness suspended,
+-- boxQueue intact, in-flight turtles park mid-strip.
+function Coordinator:pauseAll()
+  self.comms:controlAll(Comms.CONTROLS.PAUSE)
+  self.paused = true
+  self:_markDirty()
+  self:_flush()
+end
+
+function Coordinator:resumeAll()
+  self.comms:controlAll(Comms.CONTROLS.RESUME)
+  self.paused = false
+  self:_assignQueued() -- catch up any strips held back while paused
+  self:_markDirty()
+  self:_flush()
+end
+
+-- Terminal abandon (STOP) / terminal go-home (RETURN): broadcast the command,
+-- clear the queue, mark non-terminal jobs stopped, complete the run.
+function Coordinator:_terminate(cmd)
+  self.comms:controlAll(cmd)
+  self.stopped = true
+  self.boxQueue = {}
+  for _, j in pairs(self.jobs) do
+    if j.status ~= "done" and j.status ~= "failed" then j.status = "stopped" end
+  end
+  self.queue = {}
+  self.phase = "complete"
+  self:_markDirty()
+  self:_flush()
+end
+
+function Coordinator:stopAll() self:_terminate(Comms.CONTROLS.STOP) end
+function Coordinator:returnAll() self:_terminate(Comms.CONTROLS.RETURN) end
 
 --------------------------------------------------------------------------------
 -- Public loop / queries
@@ -264,20 +459,29 @@ function Coordinator:step(waitTimeout)
   end
   self:_livenessSweep()
   self:_assignQueued()
-  if self.phase == "gather" and self.expect and self:_rosterCount() >= self.expect then
+  if self.phase == "gather" and not self.paused and not self.stopped
+      and self.expect and self:_rosterCount() >= self.expect then
     self:dispatch()
   end
+  if not self.paused and not self.stopped and self:_currentBoxTerminal() then
+    self:_advance()
+  end
+  self:_flush()
   return n
 end
 
 function Coordinator:isComplete()
-  if self.phase ~= "running" and self.phase ~= "complete" then return false end
-  if self:_jobCount() == 0 then return false end
-  for _, j in pairs(self.jobs) do
-    if j.status ~= "done" and j.status ~= "failed" then return false end
+  if self.stopped then return true end
+  if self.phase == "complete" then return true end
+  if #self.boxQueue > 0 then return false end -- more boxes queued
+  if not self.currentBox then return false end -- nothing dispatched yet
+  if self:_currentBoxTerminal() then
+    self.phase = "complete"
+    self:_markDirty()
+    self:_flush()
+    return true
   end
-  self.phase = "complete"
-  return true
+  return false
 end
 
 function Coordinator:allDone()
@@ -308,7 +512,12 @@ function Coordinator:getStatus()
   for id, j in pairs(self.jobs) do
     jobs[id] = { status = j.status, assignedTo = j.assignedTo, attempts = j.attempts }
   end
-  return { turtles = turtles, jobs = jobs, phase = self.phase, complete = self:isComplete() }
+  return {
+    turtles = turtles, jobs = jobs, phase = self.phase,
+    paused = self.paused, stopped = self.stopped,
+    boxesQueued = #self.boxQueue, failedCount = self.failedCount,
+    complete = self:isComplete(),
+  }
 end
 
 return Coordinator
