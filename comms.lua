@@ -166,9 +166,10 @@ end
 --------------------------------------------------------------------------------
 
 -- Turtle side. register is a BROADCAST so a fresh turtle that doesn't yet know
--- the hub id can still announce itself.
-function Comms:register(pose)
-  return self:broadcast(Comms.TYPES.REGISTER, { pos = pose })
+-- the hub id can still announce itself. `label` is optional (the turtle's
+-- os.getComputerLabel(), read by the driver) so the dashboard can show names.
+function Comms:register(pose, label)
+  return self:broadcast(Comms.TYPES.REGISTER, { pos = pose, label = label })
 end
 
 function Comms:progress(pose, fuel, mined, jobId)

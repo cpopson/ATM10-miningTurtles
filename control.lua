@@ -51,15 +51,16 @@ local function render()
   local s = coord:getStatus()
   local lines = {
     string.format("cc-fleet-miner  %dx%d deep %d  [%s]", W, L, D, s.phase),
-    "id   state     fuel   mined  job",
+    string.format("%-12s %-9s %-6s %-6s %s", "turtle", "state", "fuel", "mined", "job"),
   }
   local ids = {}
   for id in pairs(s.turtles) do ids[#ids + 1] = id end
   table.sort(ids)
   for _, id in ipairs(ids) do
     local t = s.turtles[id]
-    lines[#lines + 1] = string.format("%-4d %-9s %-6s %-6s %s",
-      id, t.state or "?", tostring(t.fuel or "-"), tostring(t.mined or 0), tostring(t.job or "-"))
+    local name = t.label or ("#" .. id) -- label set via `label set <name>` on the turtle
+    lines[#lines + 1] = string.format("%-12s %-9s %-6s %-6s %s",
+      name, t.state or "?", tostring(t.fuel or "-"), tostring(t.mined or 0), tostring(t.job or "-"))
   end
   -- Repaint in place: overwrite each row padded to the full width, with no
   -- term.clear() between frames -- so the dashboard updates without the blink
@@ -74,10 +75,14 @@ local function render()
 end
 
 print(string.format("Control up. Waiting for %d turtles to register...", expect))
+render()
+-- Pace the loop by BLOCKING on the receive (coord:step(1)), never os.sleep --
+-- in CC os.sleep discards the rednet events carrying PROGRESS/REGISTER, which
+-- would freeze the dashboard and stop reassignment. step(1) waits up to 1s for a
+-- message (returning early when one arrives), processes it, then we redraw.
 while not coord:isComplete() do
-  coord:step()
+  coord:step(1)
   render()
-  os.sleep(0.5)
 end
 render()
 print("All strips complete.")

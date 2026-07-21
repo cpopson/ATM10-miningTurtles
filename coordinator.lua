@@ -188,9 +188,10 @@ function Coordinator:_handle(msg)
   local now = self.clock()
   local T = Comms.TYPES
   if msg.type == T.REGISTER then
-    self.roster[from] = { id = from, pose = msg.payload.pos, at = now }
+    self.roster[from] = { id = from, pose = msg.payload.pos, label = msg.payload.label, at = now }
     local st = self:_ensureStatus(from)
     st.state = "idle"
+    st.label = msg.payload.label
     st.lastSeen = now
     if self.phase == "running" then self:_assignQueued() end
   elseif msg.type == T.PROGRESS then
@@ -241,13 +242,20 @@ end
 -- Public loop / queries
 --------------------------------------------------------------------------------
 
--- Non-blocking: drain all available messages, sweep liveness, drain the reassign
--- queue, auto-dispatch when the expected roster has gathered. Returns nProcessed.
-function Coordinator:step()
+-- Drain all available messages, sweep liveness, drain the reassign queue,
+-- auto-dispatch when the expected roster has gathered. Returns nProcessed.
+--   waitTimeout : optional seconds the FIRST receive may block for. A driver
+--     passes this so it can pace its loop on the receive itself instead of
+--     os.sleep (which drops rednet events in CC). Default 0 = fully
+--     non-blocking, so tests are unaffected.
+function Coordinator:step(waitTimeout)
   if not self._hasClock then self._stepCount = self._stepCount + 1 end
   local n = 0
+  local first = true
   while true do
-    local m, e = self.comms:receive(0)
+    local t = first and waitTimeout or 0
+    first = false
+    local m, e = self.comms:receive(t)
     if m == nil and e == nil then break end -- inbox empty
     if m then
       self:_handle(m)
@@ -283,7 +291,7 @@ end
 function Coordinator:getRoster()
   local out = {}
   for id, r in pairs(self.roster) do
-    out[id] = { id = r.id, pose = r.pose, at = r.at }
+    out[id] = { id = r.id, pose = r.pose, label = r.label, at = r.at }
   end
   return out
 end
@@ -293,7 +301,7 @@ function Coordinator:getStatus()
   for id, st in pairs(self.status) do
     turtles[id] = {
       state = st.state, pos = st.pos, fuel = st.fuel,
-      mined = st.mined, job = st.job, lastSeen = st.lastSeen,
+      mined = st.mined, job = st.job, label = st.label, lastSeen = st.lastSeen,
     }
   end
   local jobs = {}

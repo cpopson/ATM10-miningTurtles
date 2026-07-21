@@ -39,8 +39,11 @@ end
 local comms = Comms.new(RT.new(side), { role = "turtle", protocol = Config.protocol })
 local nav = Nav.new(turtle, { x = x, y = y, z = z, h = 0 })
 local factory = function(n, opts) return Quarry.new(n, opts) end
-local worker = Worker.new(comms, nav, factory,
-  { progressEvery = Config.progressEvery, chestSlot = Config.chestSlot })
+local worker = Worker.new(comms, nav, factory, {
+  progressEvery = Config.progressEvery,
+  chestSlot = Config.chestSlot,
+  label = os.getComputerLabel(), -- shows on the dashboard; set with `label set <name>`
+})
 
 print(string.format("Turtle at (%d,%d,%d). Registering with control...", x, y, z))
 -- run's timeout is the idle re-register heartbeat interval (Config.heartbeat s):

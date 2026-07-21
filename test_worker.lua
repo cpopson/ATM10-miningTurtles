@@ -81,12 +81,13 @@ local function s01_register_broadcasts()
   local bus = MockBus.new()
   local control = wire(bus, 0, { role = "control" })
   local w = Worker.new(wire(bus, 1, { role = "turtle" }), stubNav({ x = 5, y = 1, z = 0, h = 2 }),
-    stubFactory(0, "ok"))
+    stubFactory(0, "ok"), { label = "Digger" })
   w:register()
   local reg = control:receive(1)
   ok(reg ~= nil and reg.type == "REGISTER", "s01: control got REGISTER")
   eq(reg and reg.from, 1, "s01: from worker 1")
   ok(reg ~= nil and reg.payload.pos.x == 5, "s01: carried pose")
+  ok(reg ~= nil and reg.payload.label == "Digger", "s01: carried the turtle's label")
 end
 
 --------------------------------------------------------------------------------

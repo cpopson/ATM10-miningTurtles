@@ -30,6 +30,7 @@ function Worker.new(comms, nav, quarryFactory, opts)
   self.progressEvery = opts.progressEvery or 8
   self.chestSlot = opts.chestSlot or 16
   self.jobOpts = opts.jobOpts
+  self.label = opts.label -- os.getComputerLabel(), read by the driver; may be nil
   self.seen = {}      -- jobId -> "running" | "done" | "failed"
   self.current = nil
   self.state = "idle" -- idle | mining | stopped
@@ -41,7 +42,7 @@ end
 -- Announce ourselves (broadcast, since we may not know the control id yet).
 function Worker:register()
   self.home = self.nav:getPose()
-  return self.comms:register(self.home)
+  return self.comms:register(self.home, self.label)
 end
 
 function Worker:isStopped()

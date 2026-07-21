@@ -56,13 +56,15 @@ end
 local function s01_discovery_roster()
   local bus = MockBus.new()
   local coord = Coordinator.new(control(bus), { clock = function() return 0 end, box = box6(), staleAfter = 100 })
-  turtle(bus, 1):register({ x = 0, y = 0, z = 0, h = 0 })
+  turtle(bus, 1):register({ x = 0, y = 0, z = 0, h = 0 }, "Alpha")
   turtle(bus, 2):register({ x = 2, y = 0, z = 0, h = 0 })
   turtle(bus, 3):register({ x = 4, y = 0, z = 0, h = 0 })
   coord:step()
   local roster = coord:getRoster()
   eq(count(roster), 3, "s01: 3 turtles in roster")
   ok(roster[1] and roster[1].pose.x == 0, "s01: pose recorded")
+  eq(roster[1] and roster[1].label, "Alpha", "s01: label recorded in roster")
+  eq(coord:getStatus().turtles[1].label, "Alpha", "s01: label exposed in status")
 end
 
 --------------------------------------------------------------------------------
