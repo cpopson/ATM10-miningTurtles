@@ -93,6 +93,10 @@ function Worker:_onAssign(job)
   self.state = "mining"
   self.abort = nil
 
+  -- Tell control we've started right away, so the dashboard flips to "mining"
+  -- without waiting for the first throttled progress tick.
+  self.comms:progress(self.nav:getPose(), self.nav:getFuelLevel(), 0, jobId)
+
   local start = self.nav:getPose()
   local onProgress = self:_makeOnProgress(jobId)
   local quarry = self.quarryFactory(self.nav, self:_quarryOpts(onProgress))
@@ -149,13 +153,22 @@ function Worker:step(timeout)
   return "idle"
 end
 
+-- One idle cycle: re-announce ourselves, then process one message. The repeated
+-- register is a heartbeat — because rednet is lossy and REGISTER may be sent
+-- before control is listening, re-broadcasting until we get work makes a dropped
+-- or early registration self-heal (and lets a rebooted turtle rejoin on its own).
+-- During a quarry the turtle is busy inside step() and sends none.
+function Worker:tick(timeout)
+  self:register()
+  return self:step(timeout)
+end
+
 -- In-game loop.
 function Worker:run(opts)
   opts = opts or {}
   local timeout = opts.timeout or 2
-  self:register()
   while self.state ~= "stopped" do
-    self:step(timeout)
+    self:tick(timeout)
   end
 end
 

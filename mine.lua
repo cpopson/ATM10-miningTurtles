@@ -23,6 +23,7 @@
 
 local Nav = require("nav")
 local Quarry = require("quarry")
+local Config = require("config")
 
 local function colour(c)
   if term and term.isColor and term.isColor() then term.setTextColor(c) end
@@ -58,15 +59,15 @@ if fuel ~= "unlimited" and fuel < est then
   end
 end
 
-local chest = nav:getItemDetail(16)
+local chest = nav:getItemDetail(Config.chestSlot)
 if chest and chest.name:lower():find("ender") and chest.name:lower():find("chest") then
-  print("Ender Chest in slot 16 - will auto-dump loot when full.")
+  print("Ender Chest in slot " .. Config.chestSlot .. " - will auto-dump loot when full.")
 else
-  print("No ender chest in slot 16 - overflow drops on the ground once full.")
+  print("No ender chest in slot " .. Config.chestSlot .. " - overflow drops on the ground once full.")
 end
 
 print(string.format("Quarrying %dx%d, %d deep (~%d cells)...", W, L, D, W * L * D))
-local ok, a, b = Quarry.new(nav):run({ width = W, length = L, depth = D })
+local ok, a, b = Quarry.new(nav, { chestSlot = Config.chestSlot }):run({ width = W, length = L, depth = D })
 
 if ok then
   colour(colors and colors.green)

@@ -116,8 +116,8 @@ local function s03_progress_throttle()
   control:assign(1, { id = "J1", width = 1, length = 1, depth = 1 })
   w:step(1)
   local c = drainCounts(control)
-  -- 20 moves, K=8 -> throttled at 8 and 16 (2) + 1 final on success = 3
-  eq(c.PROGRESS or 0, 3, "s03: 2 throttled + 1 final PROGRESS")
+  -- 1 immediate (on accept) + 2 throttled (moves 8,16) + 1 final on success = 4
+  eq(c.PROGRESS or 0, 4, "s03: immediate + 2 throttled + final PROGRESS")
 end
 
 --------------------------------------------------------------------------------
@@ -199,6 +199,20 @@ local function s08_ignores_sibling_broadcasts()
 end
 
 --------------------------------------------------------------------------------
+-- 9. tick re-registers each idle cycle (heartbeat so dropped/early REGISTER heals)
+--------------------------------------------------------------------------------
+local function s09_reregisters_while_idle()
+  local bus = MockBus.new()
+  local control = wire(bus, 0, { role = "control" })
+  local w = Worker.new(wire(bus, 1, { role = "turtle" }), stubNav(), stubFactory(3, "ok"),
+    { progressEvery = 8 })
+  eq(w:tick(0), "idle", "s09: idle tick (no work waiting)")
+  eq(w:tick(0), "idle", "s09: second idle tick")
+  local c = drainCounts(control)
+  eq(c.REGISTER or 0, 2, "s09: re-registered on each idle tick")
+end
+
+--------------------------------------------------------------------------------
 
 local scenarios = {
   s01_register_broadcasts,
@@ -209,6 +223,7 @@ local scenarios = {
   s06_failure_reports_error,
   s07_dedup_duplicate_assign,
   s08_ignores_sibling_broadcasts,
+  s09_reregisters_while_idle,
 }
 
 local scPassed, scFailed = 0, 0

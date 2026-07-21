@@ -18,6 +18,7 @@ local BASE = "https://raw.githubusercontent.com/cpopson/ATM10-miningTurtles/mast
 -- new modules here as they're added (quarry.lua, branch.lua, ... per CLAUDE.md).
 local FILES = {
   "update.lua",
+  "config.lua",
   "nav.lua",
   "mockturtle.lua",
   "test_nav.lua",

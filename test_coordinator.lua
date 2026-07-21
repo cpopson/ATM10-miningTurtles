@@ -232,6 +232,25 @@ local function s09_extra_turtles_idle()
 end
 
 --------------------------------------------------------------------------------
+-- 10. auto-dispatch fires when a late turtle finally registers (heartbeat heals)
+--------------------------------------------------------------------------------
+local function s10_auto_dispatch_on_late_register()
+  local bus = MockBus.new()
+  local coord = Coordinator.new(control(bus),
+    { clock = function() return 0 end, box = box6(), staleAfter = 100, expect = 2 })
+  local t1, t2 = turtle(bus, 1), turtle(bus, 2)
+  t1:register({ x = 0, y = 0, z = 0, h = 0 })
+  coord:step() -- only 1 of 2 registered -> no dispatch yet
+  eq(nextAssign(t1), nil, "s10: no assign before the expected count is reached")
+  -- the second turtle's REGISTER arrives late (e.g. its first one dropped)
+  t2:register({ x = 3, y = 0, z = 0, h = 0 })
+  coord:step() -- roster now 2 >= expect -> auto-dispatch
+  local m1, m2 = nextAssign(t1), nextAssign(t2)
+  ok(m1 ~= nil and m1.type == "ASSIGN", "s10: t1 assigned after auto-dispatch")
+  ok(m2 ~= nil and m2.type == "ASSIGN", "s10: late t2 assigned after auto-dispatch")
+end
+
+--------------------------------------------------------------------------------
 
 local scenarios = {
   s01_discovery_roster,
@@ -243,6 +262,7 @@ local scenarios = {
   s07_idempotent_reassign_same_turtle,
   s08_maxAttempts_failed,
   s09_extra_turtles_idle,
+  s10_auto_dispatch_on_late_register,
 }
 
 local scPassed, scFailed = 0, 0

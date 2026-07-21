@@ -17,6 +17,7 @@
 local Comms = require("comms")
 local RT = require("rednet_transport")
 local Coordinator = require("coordinator")
+local Config = require("config")
 
 local args = { ... }
 local W, L, D = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
@@ -38,24 +39,37 @@ if not side then
   return
 end
 
-local comms = Comms.new(RT.new(side), { role = "control" })
+local comms = Comms.new(RT.new(side), { role = "control", protocol = Config.protocol })
 local clock = function() return os.epoch("utc") / 1000 end -- seconds
 local box = { id = "quarry", origin = { x = 0, y = 1, z = 0 }, width = W, length = L, depth = D }
-local coord = Coordinator.new(comms, { clock = clock, staleAfter = 30, box = box, expect = expect })
+local coord = Coordinator.new(comms, {
+  clock = clock, box = box, expect = expect,
+  staleAfter = Config.staleAfter, maxAttempts = Config.maxAttempts,
+})
 
 local function render()
-  term.clear()
-  term.setCursorPos(1, 1)
   local s = coord:getStatus()
-  print(string.format("cc-fleet-miner  %dx%d deep %d  [%s]", W, L, D, s.phase))
-  print("id   state     fuel   mined  job")
+  local lines = {
+    string.format("cc-fleet-miner  %dx%d deep %d  [%s]", W, L, D, s.phase),
+    "id   state     fuel   mined  job",
+  }
   local ids = {}
   for id in pairs(s.turtles) do ids[#ids + 1] = id end
   table.sort(ids)
   for _, id in ipairs(ids) do
     local t = s.turtles[id]
-    print(string.format("%-4d %-9s %-6s %-6s %s",
-      id, t.state or "?", tostring(t.fuel or "-"), tostring(t.mined or 0), tostring(t.job or "-")))
+    lines[#lines + 1] = string.format("%-4d %-9s %-6s %-6s %s",
+      id, t.state or "?", tostring(t.fuel or "-"), tostring(t.mined or 0), tostring(t.job or "-"))
+  end
+  -- Repaint in place: overwrite each row padded to the full width, with no
+  -- term.clear() between frames -- so the dashboard updates without the blink
+  -- that a full-screen wipe causes. Blank any leftover rows below.
+  local w, h = term.getSize()
+  for i = 1, h do
+    term.setCursorPos(1, i)
+    local line = lines[i] or ""
+    if #line < w then line = line .. string.rep(" ", w - #line) end
+    term.write(string.sub(line, 1, w))
   end
 end
 

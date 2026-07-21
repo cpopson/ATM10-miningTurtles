@@ -17,6 +17,7 @@ local RT = require("rednet_transport")
 local Nav = require("nav")
 local Quarry = require("quarry")
 local Worker = require("worker")
+local Config = require("config")
 
 local args = { ... }
 local x = tonumber(args[1]) or 0
@@ -35,11 +36,15 @@ if not side then
   return
 end
 
-local comms = Comms.new(RT.new(side), { role = "turtle" })
+local comms = Comms.new(RT.new(side), { role = "turtle", protocol = Config.protocol })
 local nav = Nav.new(turtle, { x = x, y = y, z = z, h = 0 })
 local factory = function(n, opts) return Quarry.new(n, opts) end
-local worker = Worker.new(comms, nav, factory, { progressEvery = 8, jobOpts = { chestSlot = 16 } })
+local worker = Worker.new(comms, nav, factory,
+  { progressEvery = Config.progressEvery, chestSlot = Config.chestSlot })
 
 print(string.format("Turtle at (%d,%d,%d). Registering with control...", x, y, z))
-worker:run({ timeout = 2 })
+-- run's timeout is the idle re-register heartbeat interval (Config.heartbeat s):
+-- the turtle re-announces itself while waiting for work. Incoming ASSIGN/CONTROL
+-- messages still wake it immediately (rednet returns early).
+worker:run({ timeout = Config.heartbeat })
 print("Worker stopped.")

@@ -14,7 +14,10 @@
 local Nav = require("nav")
 
 local LEGS = 3   -- blocks out (and back)
-local MIN_FUEL = 8
+-- probe is the foundational standalone check, so it degrades gracefully if
+-- config.lua hasn't been synced yet.
+local okConfig, Config = pcall(require, "config")
+local MIN_FUEL = (okConfig and Config.minFuel) or 8
 
 -- Colour helpers (Advanced turtle only; plain turtles just print).
 local function colour(c)
