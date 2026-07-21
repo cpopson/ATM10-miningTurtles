@@ -29,6 +29,15 @@ local FILES = {
   "rednet_transport.lua",
   "mockbus.lua",
   "test_comms.lua",
+  "partition.lua",
+  "coordinator.lua",
+  "worker.lua",
+  "control.lua",
+  "fleet.lua",
+  "test_partition.lua",
+  "test_coordinator.lua",
+  "test_worker.lua",
+  "test_fleet.lua",
 }
 
 local function fetch(name)

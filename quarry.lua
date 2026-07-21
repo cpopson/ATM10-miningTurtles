@@ -147,14 +147,26 @@ function Quarry:run(spec)
     }
   end
 
-  -- Called after every successful move: count the cell, and dump if the loot
-  -- slots are full. Returns ok, err so a failed dump aborts the quarry cleanly.
+  -- Called after every successful move: count the cell, dump if the loot slots
+  -- are full, then report progress. Returns ok, err so a failed dump or an
+  -- onProgress abort stops the quarry cleanly.
   local function afterMove()
     cells = cells + 1
     if dumpEnabled and nav:countEmptySlots(16, self.chestSlot) == 0 then
       local dok, derr = self:_dump()
       if not dok then return false, derr end
       dumps = dumps + 1
+    end
+    -- Optional progress/abort hook. A caller (the fleet worker) uses this to
+    -- emit PROGRESS and to honor a CONTROL stop by returning exactly false.
+    -- Called every move; throttling is the caller's job. Nil-safe.
+    if self.opts.onProgress then
+      local cont = self.opts.onProgress({
+        cells = cells, layersDone = layersDone, dumps = dumps,
+        pose = nav:getPose(), fuel = nav:getFuelLevel(),
+        width = W, length = L, depth = D,
+      })
+      if cont == false then return false, "aborted" end
     end
     return true
   end

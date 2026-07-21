@@ -247,6 +247,27 @@ local function s11_no_chest_no_dump()
 end
 
 --------------------------------------------------------------------------------
+-- 12. onProgress hook can abort the quarry (worker uses this for CONTROL stop)
+--------------------------------------------------------------------------------
+local function s12_onprogress_abort()
+  local m, nav = setup()
+  fillSolidBox(m, 0, 1, 0, 3, 3, 2)
+  local calls = 0
+  local q = Quarry.new(nav, {
+    onProgress = function(info)
+      calls = calls + 1
+      if info.cells >= 5 then return false end -- abort on the 5th cell
+      return true
+    end,
+  })
+  local success, err, stats = q:run({ width = 3, length = 3, depth = 2 })
+  eq(success, false, "s12: run aborts on onProgress false")
+  eq(err, "aborted", "s12: reason is aborted")
+  eq(stats.cellsCleared, 5, "s12: stopped at the abort cell")
+  eq(calls, 5, "s12: hook called once per move up to the abort")
+end
+
+--------------------------------------------------------------------------------
 
 local scenarios = {
   s01_full_coverage_3x3x2,
@@ -260,6 +281,7 @@ local scenarios = {
   s09_gravel_inside_box,
   s10_ender_dump_and_resume,
   s11_no_chest_no_dump,
+  s12_onprogress_abort,
 }
 
 local scPassed, scFailed = 0, 0
