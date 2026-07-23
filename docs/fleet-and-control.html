@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cc-fleet-miner — How fleet talks to control</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --ink: #1c2128;
+    --muted: #5b6672;
+    --line: #e2e6eb;
+    --accent: #2f7d4f;
+    --accent-soft: #e6f2ec;
+    --code-bg: #f2f4f7;
+    --code-ink: #10331f;
+    --kbd-bg: #2b3138;
+    --kbd-ink: #f0f2f4;
+    --warn-bg: #fff6e6;
+    --warn-line: #f0c674;
+    --warn-ink: #6b4e12;
+    --note-bg: #eef4ff;
+    --note-line: #a9c6f5;
+    --note-ink: #234072;
+    --term-bg: #0e1116;
+    --term-ink: #b9f5c8;
+    --term-dim: #6f8a78;
+    /* role colours: the two speakers */
+    --control: #2c62c9;
+    --control-soft: #e7eefb;
+    --turtle: #9a6a12;
+    --turtle-soft: #fbf1e0;
+    --grid: rgba(30,50,80,.05);
+    --shadow: 0 1px 2px rgba(16,24,32,.06), 0 8px 24px rgba(16,24,32,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --ink: #e6edf3;
+      --muted: #9aa7b4;
+      --line: #262d36;
+      --accent: #56c883;
+      --accent-soft: #14251b;
+      --code-bg: #1b222b;
+      --code-ink: #a7e9bd;
+      --kbd-bg: #05070a;
+      --kbd-ink: #e6edf3;
+      --warn-bg: #2a2314;
+      --warn-line: #6b581f;
+      --warn-ink: #e6cf8a;
+      --note-bg: #12203a;
+      --note-line: #274a80;
+      --note-ink: #bcd4fa;
+      --term-bg: #05070a;
+      --term-ink: #7be39a;
+      --term-dim: #4c6754;
+      --control: #7ea8f5;
+      --control-soft: #14233f;
+      --turtle: #e3ac54;
+      --turtle-soft: #2b2214;
+      --grid: rgba(150,180,220,.05);
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 22px 96px; }
+  header.hero { max-width: 940px; margin: 0 auto; padding: 56px 22px 30px; }
+  .eyebrow {
+    display: inline-block; font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; font-weight: 600;
+  }
+  h1 { font-size: 2.35rem; line-height: 1.1; margin: 16px 0 8px; letter-spacing: -.02em; }
+  h1 .k { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+  h1 .k.control { color: var(--control); }
+  h1 .k.turtle { color: var(--turtle); }
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0; max-width: 64ch; }
+  .meta-row { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); padding: 4px 11px; border-radius: 999px; }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  /* role legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0 6px; }
+  .legend .who {
+    flex: 1 1 240px; display: flex; gap: 12px; align-items: flex-start;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .legend .swatch { width: 12px; height: 40px; border-radius: 4px; margin-top: 2px; flex: none; }
+  .legend .who.control .swatch { background: var(--control); }
+  .legend .who.turtle .swatch { background: var(--turtle); }
+  .legend .who h4 { margin: 0 0 2px; font-size: .98rem; }
+  .legend .who h4 .file { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82em; }
+  .legend .who.control h4 { color: var(--control); }
+  .legend .who.turtle h4 { color: var(--turtle); }
+  .legend .who p { margin: 0; font-size: .88rem; color: var(--muted); }
+
+  nav.toc { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin: 8px 0 40px; box-shadow: var(--shadow); }
+  nav.toc p { margin: 0 0 10px; font-weight: 700; font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { margin: 0; padding: 0; list-style: none; counter-reset: toc; columns: 2; column-gap: 32px; }
+  nav.toc li { counter-increment: toc; margin: 0 0 7px; break-inside: avoid; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a::before { content: counter(toc) ". "; color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  section { margin: 0 0 46px; scroll-margin-top: 20px; }
+  h2 { font-size: 1.5rem; letter-spacing: -.01em; margin: 0 0 4px; padding-top: 14px; border-top: 2px solid var(--line); }
+  h2 .num { display: inline-block; min-width: 1.7em; color: var(--accent); font-variant-numeric: tabular-nums; }
+  h3 { font-size: 1.12rem; margin: 26px 0 6px; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); }
+  strong { font-weight: 650; }
+
+  ul { padding-left: 1.3em; }
+  li { margin: 6px 0; }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); color: var(--code-ink); padding: 2px 6px; border-radius: 5px;
+  }
+  code.control { background: var(--control-soft); color: var(--control); }
+  code.turtle { background: var(--turtle-soft); color: var(--turtle); }
+  pre {
+    background: var(--term-bg); color: var(--term-ink); border-radius: 12px; padding: 16px 18px; overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: .84rem; line-height: 1.6;
+    box-shadow: var(--shadow); border: 1px solid var(--line);
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+  pre .cmt { color: var(--term-dim); }
+  pre .key { color: #7ea8f5; }
+  pre .str { color: #e3ac54; }
+  pre .out { color: #d7dde3; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .92rem; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { background: var(--accent-soft); color: var(--ink); font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  .scroller { overflow-x: auto; margin: 16px 0; }
+  .scroller table { margin: 0; min-width: 640px; }
+
+  /* role + delivery pills */
+  .role { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+  .role.control { color: var(--control); background: var(--control-soft); }
+  .role.turtle { color: var(--turtle); background: var(--turtle-soft); }
+  .role.all { color: var(--muted); background: var(--code-bg); }
+  .to { color: var(--muted); padding: 0 4px; }
+  .deliv { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .deliv.broadcast { color: var(--turtle); border: 1px dashed var(--turtle); }
+  .deliv.directed { color: var(--control); background: var(--control-soft); }
+  td .mtype { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 650; }
+
+  .callout { border-radius: 12px; padding: 14px 16px 14px 18px; margin: 18px 0; border-left: 4px solid; font-size: .95rem; }
+  .callout p { margin: 6px 0; }
+  .callout .tag { font-weight: 700; letter-spacing: .04em; font-size: .78rem; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .note { background: var(--note-bg); border-color: var(--note-line); color: var(--note-ink); }
+  .note .tag { color: var(--note-line); }
+  .warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .warn .tag { color: var(--warn-line); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .card h3 { margin-top: 0; }
+  .card p { margin: 6px 0 0; font-size: .92rem; color: var(--muted); }
+  .card.control { border-top: 3px solid var(--control); }
+  .card.turtle { border-top: 3px solid var(--turtle); }
+  .card .loop-head { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; color: var(--muted); }
+  ol.mini { counter-reset: s; list-style: none; padding: 0; margin: 12px 0 0; }
+  ol.mini li { counter-increment: s; position: relative; padding: 3px 0 3px 30px; margin: 8px 0; font-size: .92rem; }
+  ol.mini li::before {
+    content: counter(s); position: absolute; left: 0; top: 3px; width: 21px; height: 21px; border-radius: 50%;
+    display: grid; place-items: center; font-size: .74rem; font-weight: 700; color: #fff;
+  }
+  .card.control ol.mini li::before { background: var(--control); }
+  .card.turtle ol.mini li::before { background: var(--turtle); }
+
+  /* strip / coordinate-frame diagram */
+  .frame {
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-color: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 18px; margin: 18px 0; box-shadow: var(--shadow); overflow-x: auto;
+  }
+  .frame .axis { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; color: var(--muted); letter-spacing: .03em; margin-bottom: 12px; }
+  .frame .arrowx { color: var(--turtle); }
+  .strips { display: flex; gap: 16px; min-width: 520px; }
+  .strip { flex: 1 1 0; border: 1.5px solid var(--turtle); border-radius: 10px; padding: 12px 12px 14px; background: var(--turtle-soft); position: relative; }
+  .strip .snum { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .72rem; color: var(--turtle); font-weight: 700; letter-spacing: .05em; }
+  .strip .node { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
+  .strip .dot { width: 26px; height: 26px; border-radius: 7px; background: var(--turtle); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: .82rem; flex: none; box-shadow: 0 2px 0 rgba(0,0,0,.18); }
+  .strip .node b { font-size: .9rem; }
+  .strip .coord { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; color: var(--muted); }
+  .strip .cmd { margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; background: var(--term-bg); color: var(--term-ink); border-radius: 7px; padding: 6px 9px; }
+  .strip .cmd .p { color: #59b6ff; }
+  .frame .down { text-align: center; margin-top: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; color: var(--muted); }
+
+  /* sequence timeline */
+  .seq { position: relative; margin: 18px 0; padding: 4px 0; }
+  .seq::before { content: ""; position: absolute; top: 40px; bottom: 6px; left: 50%; width: 2px; background: var(--line); transform: translateX(-1px); }
+  .seq .lanes { display: flex; justify-content: space-between; margin-bottom: 14px; gap: 10px; }
+  .seq .lane { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; font-weight: 700; padding: 8px 12px; border-radius: 9px; }
+  .seq .lane.control { color: var(--control); background: var(--control-soft); text-align: left; }
+  .seq .lane.turtle { color: var(--turtle); background: var(--turtle-soft); text-align: right; }
+  .phase-tag { position: relative; text-align: center; margin: 20px 0 8px; }
+  .phase-tag span { background: var(--bg); padding: 0 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .msg { position: relative; display: flex; margin: 9px 0; }
+  .msg::before { content: ""; position: absolute; left: 50%; top: 16px; width: 10px; height: 10px; border-radius: 50%; transform: translate(-50%, -50%); border: 2px solid var(--bg); z-index: 1; }
+  .msg.from-control { justify-content: flex-start; }
+  .msg.from-turtle { justify-content: flex-end; }
+  .msg.from-control::before { background: var(--control); }
+  .msg.from-turtle::before { background: var(--turtle); }
+  .bubble { max-width: 47%; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 8px 12px; box-shadow: var(--shadow); }
+  .msg.from-control .bubble { border-left: 3px solid var(--control); }
+  .msg.from-turtle .bubble { border-right: 3px solid var(--turtle); text-align: right; }
+  .bubble .mt { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; font-size: .86rem; }
+  .msg.from-control .bubble .mt { color: var(--control); }
+  .msg.from-turtle .bubble .mt { color: var(--turtle); }
+  .bubble .pl { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; color: var(--muted); margin-top: 1px; }
+  /* control's own internal actions — notes on the spine, not messages */
+  .act { position: relative; text-align: center; margin: 9px auto; max-width: 62%; }
+  .act span { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; color: var(--control); background: var(--control-soft); border: 1px dashed var(--control); border-radius: 999px; padding: 3px 12px; }
+  .act.win span { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+
+  footer { max-width: 940px; margin: 0 auto; padding: 30px 22px 60px; color: var(--muted); font-size: .88rem; border-top: 1px solid var(--line); }
+  footer a { color: var(--accent); }
+  footer code { font-size: .85em; }
+
+  @media (max-width: 680px) {
+    nav.toc ol { columns: 1; }
+    .grid2 { grid-template-columns: 1fr; }
+    h1 { font-size: 1.9rem; }
+    .bubble { max-width: 62%; }
+    .seq .lanes { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="eyebrow">cc-fleet-miner · protocol &amp; internals</span>
+  <h1>How <span class="k turtle">fleet</span> talks to <span class="k control">control</span></h1>
+  <p class="lede">One control computer and a handful of mining turtles run two different programs that never call each other — they only trade typed messages over rednet. This is the companion to the operator guide: what those messages are, who says what, and how a run actually unfolds.</p>
+  <div class="meta-row">
+    <span class="chip"><b>Protocol:</b> ccfleet (rednet)</span>
+    <span class="chip"><b>Roles:</b> 1 hub · 2–5 workers</span>
+    <span class="chip"><b>GPS:</b> not required</span>
+    <span class="chip"><b>Companion:</b> control.html</span>
+  </div>
+
+  <div class="legend">
+    <div class="who control">
+      <div class="swatch"></div>
+      <div>
+        <h4>control <span class="file">control.lua</span></h4>
+        <p>The hub. Splits the box into strips, hands them out, tracks progress, reassigns dead work. Never digs. One per fleet.</p>
+      </div>
+    </div>
+    <div class="who turtle">
+      <div class="swatch"></div>
+      <div>
+        <h4>fleet <span class="file">fleet.lua</span></h4>
+        <p>A worker. Announces itself, waits for a strip, mines it relative to where it stands, reports in, obeys stop/pause. One per turtle.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#model">Two programs, one conversation</a></li>
+      <li><a href="#frame">The shared coordinate frame</a></li>
+      <li><a href="#protocol">The six messages</a></li>
+      <li><a href="#control-loop">Inside control: the pump</a></li>
+      <li><a href="#fleet-loop">Inside fleet: the worker loop</a></li>
+      <li><a href="#run">A full run, message by message</a></li>
+      <li><a href="#robust">When things go wrong</a></li>
+      <li><a href="#gotcha">The one CC gotcha</a></li>
+    </ol>
+  </nav>
+
+  <section id="model">
+    <h2><span class="num">1</span>Two programs, one conversation</h2>
+    <p>It's a <strong>hub-and-spoke</strong> system. You run <code class="control">control</code> on one computer with a modem, and <code class="turtle">fleet</code> on each turtle. Neither program calls the other or shares any memory — they communicate <em>only</em> by broadcasting and sending small message tables (called <strong>envelopes</strong>) over a single named rednet protocol, <code>"ccfleet"</code>.</p>
+    <p>That hard separation is the whole point of the design: because the turtle-facing logic (the <em>worker</em>) and the hub logic (the <em>coordinator</em>) both talk to an injected messaging layer instead of to <code>rednet</code> directly, the entire fleet can be tested against a fake in-memory bus, off Minecraft. What you're reading here is that message contract.</p>
+    <div class="callout note">
+      <span class="tag">The division of labour</span>
+      <p><strong>control</strong> decides <em>who mines what</em> and <em>watches for trouble</em>. <strong>fleet</strong> decides <em>nothing</em> about the fleet — it only knows its own strip and its own position. All coordination lives in the hub; a turtle is deliberately dumb.</p>
+    </div>
+  </section>
+
+  <section id="frame">
+    <h2><span class="num">2</span>The shared coordinate frame (why <span class="mono">fleet</span> takes x&nbsp;y&nbsp;z)</h2>
+    <p>This is the one idea to hold in your head, because it explains the turtle's launch arguments. The hub splits your box <strong>by X</strong> into contiguous, non-overlapping <strong>column-strips</strong> — one slab per turtle:</p>
+
+    <div class="frame" aria-label="Top-down view: a 6-wide box split into two 3-wide strips, a turtle placed at each strip's start corner">
+      <div class="axis">WIDTH → <span class="arrowx">(+X, to the turtles' right)</span> &nbsp;·&nbsp; a 6×L box, 2 turtles</div>
+      <div class="strips">
+        <div class="strip">
+          <div class="snum">STRIP s1 · width 3</div>
+          <div class="node"><span class="dot">A</span><b>turtle A</b></div>
+          <div class="coord">origin x=0, y=1, z=0</div>
+          <div class="cmd"><span class="p">&gt;</span> fleet 0 1 0</div>
+        </div>
+        <div class="strip">
+          <div class="snum">STRIP s2 · width 3</div>
+          <div class="node"><span class="dot">B</span><b>turtle B</b></div>
+          <div class="coord">origin x=3, y=1, z=0</div>
+          <div class="cmd"><span class="p">&gt;</span> fleet 3 1 0</div>
+        </div>
+      </div>
+      <div class="down">↓ &nbsp; DEPTH goes straight down (−Y) &nbsp; ↓</div>
+    </div>
+
+    <p>Here's the subtle part: <strong>a turtle mines relative to wherever it is physically standing.</strong> The quarry pattern never reads an absolute coordinate — it just clears <code>width × length × depth</code> starting from the turtle's own body. So the <code>x&nbsp;y&nbsp;z</code> you type into <code class="turtle">fleet</code> is used for <em>exactly one thing</em>: it's the turtle's claimed position in the hub's frame, so the coordinator can <strong>position-match</strong> — give the strip whose origin equals your pose to the turtle standing there.</p>
+    <p>Type the right coords and turtle&nbsp;B (at x=3) is handed the x=3 strip. This is also the project's <strong>structural collision avoidance</strong>: turtles never path around each other because they physically can't overlap — they were pre-placed in separate X-strips. There's no runtime dodging to go wrong.</p>
+    <div class="callout warn">
+      <span class="tag">Get the coords wrong…</span>
+      <p>…and a turtle can be matched to the wrong-width strip and overlap its neighbour, or sit <code>idle</code> because no strip origin matches its pose. The coords are the hub's only way to know which physical turtle should get which slab.</p>
+    </div>
+  </section>
+
+  <section id="protocol">
+    <h2><span class="num">3</span>The six messages</h2>
+    <p>Every packet is an <strong>envelope</strong> — a plain table with a fixed shape. The <code>payload</code> differs per type; everything else is routing and versioning:</p>
+    <pre><code>{
+  <span class="key">v</span>       = 1,            <span class="cmt">-- protocol version</span>
+  <span class="key">type</span>    = <span class="str">"ASSIGN"</span>,     <span class="cmt">-- one of the six types below</span>
+  <span class="key">from</span>    = 4,            <span class="cmt">-- sender's computer id</span>
+  <span class="key">to</span>      = 7,            <span class="cmt">-- recipient id, or nil for a broadcast</span>
+  <span class="key">seq</span>     = 12,           <span class="cmt">-- per-sender counter</span>
+  <span class="key">payload</span> = { job = {...} } <span class="cmt">-- type-specific contents</span>
+}</code></pre>
+    <p>Six types flow between the two programs. <strong>Direction and delivery matter</strong> — a <span class="deliv broadcast">broadcast</span> reaches everyone on the protocol; a <span class="deliv directed">directed</span> send goes to one id:</p>
+    <div class="scroller">
+    <table>
+      <thead><tr><th>Message</th><th>From → To</th><th>Delivery</th><th>Payload</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="mtype" style="color:var(--turtle)">REGISTER</span></td>
+          <td><span class="role turtle">turtle</span><span class="to">→</span><span class="role all">all</span></td>
+          <td><span class="deliv broadcast">broadcast</span></td>
+          <td><code>{pos, label}</code></td>
+          <td>"I exist, I'm here, call me <em>Dozer</em>."</td>
+        </tr>
+        <tr>
+          <td><span class="mtype" style="color:var(--control)">ASSIGN</span></td>
+          <td><span class="role control">control</span><span class="to">→</span><span class="role turtle">turtle</span></td>
+          <td><span class="deliv directed">directed</span></td>
+          <td><code>{job}</code></td>
+          <td>"Mine this strip" (width / length / depth).</td>
+        </tr>
+        <tr>
+          <td><span class="mtype" style="color:var(--turtle)">PROGRESS</span></td>
+          <td><span class="role turtle">turtle</span><span class="to">→</span><span class="role control">control</span></td>
+          <td><span class="deliv directed">directed</span></td>
+          <td><code>{pos, fuel, mined, job}</code></td>
+          <td>"Still alive, here's my status." Also the heartbeat.</td>
+        </tr>
+        <tr>
+          <td><span class="mtype" style="color:var(--turtle)">DONE</span></td>
+          <td><span class="role turtle">turtle</span><span class="to">→</span><span class="role control">control</span></td>
+          <td><span class="deliv directed">directed</span></td>
+          <td><code>{job}</code></td>
+          <td>"My strip is clear."</td>
+        </tr>
+        <tr>
+          <td><span class="mtype" style="color:var(--turtle)">ERROR</span></td>
+          <td><span class="role turtle">turtle</span><span class="to">→</span><span class="role control">control</span></td>
+          <td><span class="deliv directed">directed</span></td>
+          <td><code>{reason, job}</code></td>
+          <td>"I failed" (out of fuel, stuck, hit bedrock).</td>
+        </tr>
+        <tr>
+          <td><span class="mtype" style="color:var(--control)">CONTROL</span></td>
+          <td><span class="role control">control</span><span class="to">→</span><span class="role turtle">turtle(s)</span></td>
+          <td><span class="deliv directed">directed</span> / <span class="deliv broadcast">broadcast</span></td>
+          <td><code>{cmd}</code></td>
+          <td>pause · resume · stop · return.</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout note">
+      <span class="tag">Two consequences worth internalising</span>
+      <p><strong>REGISTER is a broadcast</strong> because a fresh turtle doesn't yet know the hub's id. It <em>learns</em> that id from the first ASSIGN or CONTROL it receives, then sends all its PROGRESS / DONE / ERROR straight there.</p>
+      <p>Which means <strong>only the control computer ever receives progress</strong> — those are point-to-point sends, not broadcasts. A second computer eavesdropping on the protocol would see the REGISTER beacons but none of the status traffic.</p>
+    </div>
+  </section>
+
+  <section id="control-loop">
+    <h2><span class="num">4</span>Inside <span class="mono">control</span>: the pump</h2>
+    <p>The station runs <strong>three cooperative loops at once</strong> (via <code>parallel.waitForAny</code>): one drives the coordinator, one reads your keystrokes, one redraws the dashboard. The engine is the first one — it just calls <code>coord:step()</code> over and over until the run is complete. Each <code>step()</code> is one full pump:</p>
+    <div class="card control">
+      <div class="loop-head">while not coord:isComplete() do coord:step(1) end</div>
+      <ol class="mini">
+        <li><strong>Drain the inbox.</strong> Read every waiting message (the first receive may block up to 1s so the loop paces itself) and update the roster + per-turtle status from each.</li>
+        <li><strong>Liveness sweep.</strong> Any mining/assigned turtle silent longer than <code>staleAfter</code> is marked <em>stale</em>, and its strip is requeued for reassignment.</li>
+        <li><strong>Assign.</strong> Hand every queued strip to a free turtle, preferring one whose pose matches the strip's origin.</li>
+        <li><strong>Dispatch</strong> when the expected roster has gathered: partition the current box into strips and queue them.</li>
+        <li><strong>Advance.</strong> When every strip of the box is terminal, pop the next queued box — or mark the whole run <code>complete</code>.</li>
+        <li><strong>Flush.</strong> If anything durable changed, save the job state to disk (so a reboot resumes).</li>
+      </ol>
+    </div>
+    <p>The other two loops are thin: keystrokes <span class="mono">P/R/S/H</span> call <code>pauseAll / resumeAll / stopAll / returnAll</code> (each broadcasts a CONTROL command and flips a flag), and the render loop paints the table every 0.3s.</p>
+  </section>
+
+  <section id="fleet-loop">
+    <h2><span class="num">5</span>Inside <span class="mono">fleet</span>: the worker loop</h2>
+    <p>A turtle's life is much simpler. While it has no work it loops on a short cycle; once it's mining it's busy inside a single blocking call and reports out through a hook.</p>
+    <div class="grid2">
+      <div class="card turtle">
+        <h3>While idle</h3>
+        <div class="loop-head">tick(): register() then step()</div>
+        <ol class="mini">
+          <li><strong>Broadcast REGISTER</strong> with its pose + label.</li>
+          <li><strong>Wait</strong> up to <code>heartbeat</code> seconds for one message. An ASSIGN wakes it instantly; a timeout just loops.</li>
+          <li>Because register repeats each cycle, it doubles as a <strong>heartbeat</strong> — a dropped or too-early registration heals itself, and a rebooted turtle rejoins on its own.</li>
+        </ol>
+      </div>
+      <div class="card turtle">
+        <h3>On ASSIGN → while mining</h3>
+        <div class="loop-head">_onAssign(job): run the quarry</div>
+        <ol class="mini">
+          <li>Send an immediate <strong>PROGRESS (0 mined)</strong> so the dashboard flips to <em>mining</em> at once.</li>
+          <li>Run the quarry — <strong>this call blocks</strong> until the strip is done.</li>
+          <li>Every <code>progressEvery</code> blocks a hook fires: send PROGRESS, then poll for a CONTROL command.</li>
+          <li>On finish → final PROGRESS + <strong>DONE</strong>. On failure → <strong>ERROR</strong>.</li>
+        </ol>
+      </div>
+    </div>
+    <div class="callout note">
+      <span class="tag">Why the hook exists</span>
+      <p>Mining is one long blocking call, so the <em>only</em> moment a busy turtle can notice a pause or stop is inside that throttled hook. That's why control response isn't instant — it lands within about <code>progressEvery</code> blocks (default 8). On a PAUSE the turtle parks right there and blocks until RESUME or STOP arrives.</p>
+    </div>
+  </section>
+
+  <section id="run">
+    <h2><span class="num">6</span>A full run, message by message</h2>
+    <p>Here is the whole conversation for a 6-wide box and two turtles — hub actions sit on the centre line, messages cross between the lanes, coloured by who's speaking.</p>
+
+    <div class="seq" role="img" aria-label="Sequence of messages between control and two turtles across four phases: gather, dispatch, mine, finish">
+      <div class="lanes">
+        <div class="lane control">control.lua &nbsp;(hub)</div>
+        <div class="lane turtle">fleet.lua &nbsp;(turtles A, B)</div>
+      </div>
+
+      <div class="phase-tag"><span>① Gather</span></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">REGISTER ▸ broadcast</div><div class="pl">A · pos (0,1,0) · "A"</div></div></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">REGISTER ▸ broadcast</div><div class="pl">B · pos (3,1,0) · "B"</div></div></div>
+      <div class="act"><span>roster = {A, B} ≥ expect (2)</span></div>
+
+      <div class="phase-tag"><span>② Dispatch</span></div>
+      <div class="act"><span>split box → s1 (x0, w3), s2 (x3, w3)</span></div>
+      <div class="act"><span>pose-match: A ↔ s1, B ↔ s2</span></div>
+      <div class="msg from-control"><div class="bubble"><div class="mt">ASSIGN ▸ A</div><div class="pl">job s1 · w3 × L × D</div></div></div>
+      <div class="msg from-control"><div class="bubble"><div class="mt">ASSIGN ▸ B</div><div class="pl">job s2 · w3 × L × D</div></div></div>
+
+      <div class="phase-tag"><span>③ Mine</span></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">PROGRESS ▸ control</div><div class="pl">A · mined 0 → flips to "mining"</div></div></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">PROGRESS ▸ control</div><div class="pl">B · mined 0 → "mining"</div></div></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">PROGRESS × N</div><div class="pl">A · mined 8, 16, 24 … fuel, pos</div></div></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">PROGRESS × N</div><div class="pl">B · mined 8, 16, 24 …</div></div></div>
+
+      <div class="phase-tag"><span>④ Finish</span></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">DONE ▸ control</div><div class="pl">A · job s1 clear</div></div></div>
+      <div class="msg from-turtle"><div class="bubble"><div class="mt">DONE ▸ control</div><div class="pl">B · job s2 clear</div></div></div>
+      <div class="act win"><span>both strips terminal → phase = complete → station exits</span></div>
+    </div>
+
+    <p>If you'd pressed <span class="mono">P</span> partway through phase ③, the hub would have <span class="deliv broadcast">broadcast</span> a <span class="mono">CONTROL pause</span>; each turtle notices it at its next PROGRESS hook and parks mid-strip until a <span class="mono">CONTROL resume</span> arrives.</p>
+  </section>
+
+  <section id="robust">
+    <h2><span class="num">7</span>When things go wrong</h2>
+    <p>The interplay earns its keep exactly here — the message loop is also the failure-recovery loop.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>A turtle goes silent</h3>
+        <p>Chunk unload, crash, or a stall with no ERROR. Its PROGRESS pings stop; after <code>staleAfter</code> seconds the hub marks it <em>stale</em> and requeues its strip. A free turtle — ideally a spare pre-placed at that strip's corner so the pose still matches — is re-ASSIGNed, up to <code>maxAttempts</code> before the strip is given up as <em>failed</em> so the run can't hang forever.</p>
+      </div>
+      <div class="card">
+        <h3>You steer the fleet</h3>
+        <p><span class="mono">P/R/S/H</span> broadcast a CONTROL command. <strong>Pause</strong> parks turtles mid-strip (reversible); <strong>Stop</strong> abandons in place; <strong>Home</strong> returns each turtle to its start pose first. All land within ~<code>progressEvery</code> blocks, since that's when a mining turtle next checks its inbox.</p>
+      </div>
+      <div class="card">
+        <h3>The hub reboots</h3>
+        <p>Job state is on disk. <code>restore()</code> rehydrates it and seeds a status entry per in-flight strip. When turtles re-REGISTER (their heartbeat), any still holding an in-flight job is re-ASSIGNed <em>the same job id</em> — which the worker recognises as a duplicate and ignores, so nothing double-mines.</p>
+      </div>
+      <div class="card">
+        <h3>Idempotent by id</h3>
+        <p>Strip ids are deterministic (<code>box-s1</code>, <code>box-s2</code>, …), so re-sending an ASSIGN is always safe. The worker keeps a <code>seen</code> set; a re-ASSIGN of a finished strip just re-acks its DONE. This is what makes reboots and lossy rednet survivable.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="gotcha">
+    <h2><span class="num">8</span>The one CC gotcha that shaped both loops</h2>
+    <p>ComputerCraft's <code>os.sleep</code> — and any filtered <code>os.pullEvent</code> — <strong>silently discards <code>rednet_message</code> events</strong> that arrive while it's waiting. A naïve "receive → render → sleep" loop would drop turtle messages and the dashboard would freeze. That single fact dictates the concurrency on both ends:</p>
+    <ul>
+      <li><strong>control</strong> uses <code>parallel.waitForAny</code> — <code>parallel</code> hands each event to <em>every</em> waiting coroutine, so the sleeping render loop can't starve the comms loop's receive.</li>
+      <li><strong>fleet</strong> paces its idle loop on the <strong>blocking receive</strong> itself (the heartbeat timeout), never on <code>os.sleep</code>.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="tag">If you extend either program</span>
+      <p>Never drop an <code>os.sleep</code> into a loop that also needs to receive rednet. Pace on the receive's timeout, or add another coroutine under <code>parallel</code>. This is the bug that froze the dashboard the first time around.</p>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <p><strong>cc-fleet-miner</strong> — protocol &amp; internals. The operator's how-to lives in <code>docs/control.html</code>; this doc is the "how it works underneath" companion. Source: <code>fleet.lua</code>, <code>worker.lua</code>, <code>coordinator.lua</code>, <code>comms.lua</code>, <code>partition.lua</code>, <code>config.lua</code>. See <code>README.md</code> for the full module map.</p>
+</footer>
+
+</body>
+</html>

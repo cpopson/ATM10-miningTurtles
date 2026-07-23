@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cc-fleet-miner — The dig (tunnel) Program</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --ink: #1c2128;
+    --muted: #5b6672;
+    --line: #e2e6eb;
+    --accent: #2f7d4f;
+    --accent-soft: #e6f2ec;
+    --code-bg: #f2f4f7;
+    --code-ink: #10331f;
+    --kbd-bg: #2b3138;
+    --kbd-ink: #f0f2f4;
+    --warn-bg: #fff6e6;
+    --warn-line: #f0c674;
+    --warn-ink: #6b4e12;
+    --note-bg: #eef4ff;
+    --note-line: #a9c6f5;
+    --note-ink: #234072;
+    --term-bg: #0e1116;
+    --term-ink: #b9f5c8;
+    --term-dim: #6f8a78;
+    /* the three reserved-slot roles */
+    --chest: #2c62c9;
+    --chest-soft: #e7eefb;
+    --torch: #cf8a2a;
+    --torch-soft: #fbf1e0;
+    --filler: #6b7684;
+    --filler-soft: #eceef1;
+    --grid: rgba(30,50,80,.05);
+    --shadow: 0 1px 2px rgba(16,24,32,.06), 0 8px 24px rgba(16,24,32,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --ink: #e6edf3;
+      --muted: #9aa7b4;
+      --line: #262d36;
+      --accent: #56c883;
+      --accent-soft: #14251b;
+      --code-bg: #1b222b;
+      --code-ink: #a7e9bd;
+      --kbd-bg: #05070a;
+      --kbd-ink: #e6edf3;
+      --warn-bg: #2a2314;
+      --warn-line: #6b581f;
+      --warn-ink: #e6cf8a;
+      --note-bg: #12203a;
+      --note-line: #274a80;
+      --note-ink: #bcd4fa;
+      --term-bg: #05070a;
+      --term-ink: #7be39a;
+      --term-dim: #4c6754;
+      --chest: #7ea8f5;
+      --chest-soft: #14233f;
+      --torch: #e3ac54;
+      --torch-soft: #2b2214;
+      --filler: #9aa7b4;
+      --filler-soft: #20262e;
+      --grid: rgba(150,180,220,.05);
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 22px 96px; }
+  header.hero { max-width: 900px; margin: 0 auto; padding: 56px 22px 30px; }
+  .eyebrow {
+    display: inline-block; font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; font-weight: 600;
+  }
+  h1 { font-size: 2.35rem; line-height: 1.1; margin: 16px 0 8px; letter-spacing: -.02em; }
+  h1 .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; color: var(--accent); }
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0; max-width: 62ch; }
+  .meta-row { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); padding: 4px 11px; border-radius: 999px; }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  nav.toc { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin: 8px 0 40px; box-shadow: var(--shadow); }
+  nav.toc p { margin: 0 0 10px; font-weight: 700; font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { margin: 0; padding: 0; list-style: none; counter-reset: toc; columns: 2; column-gap: 32px; }
+  nav.toc li { counter-increment: toc; margin: 0 0 7px; break-inside: avoid; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a::before { content: counter(toc) ". "; color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  section { margin: 0 0 44px; scroll-margin-top: 20px; }
+  h2 { font-size: 1.5rem; letter-spacing: -.01em; margin: 0 0 4px; padding-top: 14px; border-top: 2px solid var(--line); }
+  h2 .num { display: inline-block; min-width: 1.7em; color: var(--accent); font-variant-numeric: tabular-nums; }
+  h3 { font-size: 1.12rem; margin: 28px 0 6px; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); }
+
+  ul, ol.steps { padding-left: 1.3em; }
+  li { margin: 6px 0; }
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li { position: relative; padding: 4px 0 4px 44px; margin: 14px 0; counter-increment: step; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 2px; width: 30px; height: 30px;
+    background: var(--accent); color: #fff; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .92rem;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); color: var(--code-ink); padding: 2px 6px; border-radius: 5px;
+  }
+  pre {
+    background: var(--term-bg); color: var(--term-ink); border-radius: 12px; padding: 16px 18px; overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: .86rem; line-height: 1.55;
+    box-shadow: var(--shadow); border: 1px solid var(--line);
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+  pre .cmt { color: var(--term-dim); }
+  pre .prompt { color: #59b6ff; }
+  pre .out { color: #d7dde3; }
+  pre .good { color: #7be39a; }
+  pre .bad { color: #ff9a9a; }
+
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--kbd-bg); color: var(--kbd-ink);
+    border-radius: 6px; padding: 2px 9px; font-size: .82em; font-weight: 600; box-shadow: 0 2px 0 rgba(0,0,0,.35);
+    display: inline-block; min-width: 1.4em; text-align: center;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .93rem; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { background: var(--accent-soft); color: var(--ink); font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  .callout { border-radius: 12px; padding: 14px 16px 14px 18px; margin: 18px 0; border-left: 4px solid; font-size: .95rem; }
+  .callout p { margin: 6px 0; }
+  .callout .tag { font-weight: 700; letter-spacing: .04em; font-size: .78rem; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .note { background: var(--note-bg); border-color: var(--note-line); color: var(--note-ink); }
+  .note .tag { color: var(--note-line); }
+  .warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .warn .tag { color: var(--warn-line); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .card h3 { margin-top: 0; }
+  .card p { margin: 6px 0 0; font-size: .92rem; color: var(--muted); }
+
+  /* diagram shells */
+  .diagram {
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 22px 22px; background-color: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin: 16px 0; box-shadow: var(--shadow); overflow-x: auto;
+  }
+  .diagram .cap { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; color: var(--muted); letter-spacing: .03em; }
+
+  /* corridor cross-section (side view) */
+  .tv { display: inline-grid; grid-template-columns: auto auto; grid-template-rows: auto auto; gap: 10px 12px; min-width: 440px; }
+  .tv .ylab { grid-row: 1; grid-column: 1; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; align-self: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .72rem; color: var(--accent); font-weight: 700; letter-spacing: .05em; }
+  .tv .cells { grid-row: 1; grid-column: 2; display: grid; grid-template-columns: repeat(6, 46px); grid-auto-rows: 40px; gap: 4px; }
+  .tv .xlab { grid-row: 2; grid-column: 2; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .72rem; color: var(--accent); font-weight: 700; letter-spacing: .05em; }
+  .cell { border-radius: 6px; position: relative; display: grid; place-items: center; font-size: .68rem; }
+  .cell.air { border: 1px dashed var(--line); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+  .cell.rock { background: var(--filler-soft); border: 1px solid var(--line); }
+  .cell.fill { background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 700; }
+  .cell .turtle { width: 30px; height: 24px; border-radius: 5px; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 800; box-shadow: 0 2px 0 rgba(0,0,0,.2); }
+  .cell .torch { position: absolute; bottom: 3px; width: 5px; height: 22px; border-radius: 2px; background: var(--torch); }
+  .cell .torch::after { content: ""; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 9px; height: 9px; border-radius: 50%; background: var(--torch); box-shadow: 0 0 8px 2px color-mix(in srgb, var(--torch) 60%, transparent); }
+
+  /* turtle inventory 4x4 slot map */
+  .slotwrap { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+  .slots { display: grid; grid-template-columns: repeat(4, 52px); grid-auto-rows: 52px; gap: 6px; }
+  .slot { border-radius: 8px; border: 1px solid var(--line); background: var(--panel); position: relative; display: grid; place-items: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; color: var(--muted); }
+  .slot .n { position: absolute; top: 3px; left: 5px; font-size: .62rem; color: var(--muted); }
+  .slot.loot { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); color: var(--accent); }
+  .slot.chest { background: var(--chest-soft); border-color: var(--chest); color: var(--chest); font-weight: 700; }
+  .slot.torch { background: var(--torch-soft); border-color: var(--torch); color: var(--torch); font-weight: 700; }
+  .slot.filler { background: var(--filler-soft); border-color: var(--filler); color: var(--filler); font-weight: 700; }
+  .legend { display: flex; flex-direction: column; gap: 9px; font-size: .9rem; }
+  .legend .row { display: flex; align-items: center; gap: 10px; }
+  .legend .sw { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+  .legend .sw.loot { background: var(--accent-soft); border-color: var(--accent); }
+  .legend .sw.chest { background: var(--chest-soft); border-color: var(--chest); }
+  .legend .sw.torch { background: var(--torch-soft); border-color: var(--torch); }
+  .legend .sw.filler { background: var(--filler-soft); border-color: var(--filler); }
+  .legend b { font-weight: 650; }
+  .legend small { color: var(--muted); }
+
+  footer { max-width: 900px; margin: 0 auto; padding: 30px 22px 60px; color: var(--muted); font-size: .88rem; border-top: 1px solid var(--line); }
+  footer code { font-size: .85em; }
+
+  @media (max-width: 640px) {
+    nav.toc ol { columns: 1; }
+    .grid2 { grid-template-columns: 1fr; }
+    h1 { font-size: 1.9rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="eyebrow">cc-fleet-miner · tunnel pattern</span>
+  <h1>The <span class="mono">dig</span> Program</h1>
+  <p class="lede">Send one mining turtle down a straight corridor of any size — lit with torches, its floor patched over caves and lava, its loot streamed into an Ender Chest — and it walks itself back to the mouth when it's done.</p>
+  <div class="meta-row">
+    <span class="chip"><b>Command:</b> dig &lt;length&gt; [width] [height]</span>
+    <span class="chip"><b>Turtles:</b> 1 (standalone)</span>
+    <span class="chip"><b>Modem:</b> not required</span>
+    <span class="chip"><b>Pattern:</b> tunnel.lua</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#what">What dig does</a></li>
+      <li><a href="#need">What you need</a></li>
+      <li><a href="#code">Get the code in-game</a></li>
+      <li><a href="#geometry">Geometry (place it right)</a></li>
+      <li><a href="#slots">Load the turtle</a></li>
+      <li><a href="#run">Run it</a></li>
+      <li><a href="#output">Reading the output</a></li>
+      <li><a href="#tuning">Tuning (config.lua)</a></li>
+      <li><a href="#troubleshoot">Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <section id="what">
+    <h2><span class="num">1</span>What <code>dig</code> does</h2>
+    <p><code>dig</code> is the single-turtle driver for the <strong>tunnel pattern</strong>. It clears a rectangular corridor — <em>length</em> forward, <em>width</em> to the right, <em>height</em> up — and does four jobs along the way:</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Cuts the corridor</h3>
+        <p>Clears the whole box level by level in a tidy back-and-forth sweep, so nothing is missed and the turtle never wanders.</p>
+      </div>
+      <div class="card">
+        <h3>Lights it</h3>
+        <p>Drops a torch on the floor every few blocks (from a torch slot) so the corridor stays mob-free. Needs a height of 2 or more.</p>
+      </div>
+      <div class="card">
+        <h3>Patches the floor</h3>
+        <p>Any gap under the corridor — a cave opening, a lava pool — gets a filler block dropped into it so you can walk the tunnel safely.</p>
+      </div>
+      <div class="card">
+        <h3>Dumps &amp; returns</h3>
+        <p>Streams loot into an Ender Chest when full (no trip home), then walks back to the mouth facing its original direction when finished.</p>
+      </div>
+    </div>
+    <div class="callout note">
+      <span class="tag">Standalone — no fleet needed</span>
+      <p><code>dig</code> is one turtle doing one job; it doesn't use rednet or the control station at all. (The tunnel pattern isn't wired into the fleet yet — that's a later step. For multi-turtle box clears, use <code>mine</code> / the control station.)</p>
+    </div>
+  </section>
+
+  <section id="need">
+    <h2><span class="num">2</span>What you need</h2>
+    <table>
+      <thead><tr><th>Item</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1× Mining Turtle</strong></td><td>Any Mining Turtle. An <strong>Advanced</strong> one gives coloured output. No modem required.</td></tr>
+        <tr><td><strong>Fuel</strong></td><td>Coal / charcoal in a slot, then <code>refuel all</code>. It needs roughly <code>width × length × height</code> plus the return trip — <code>dig</code> warns and tops up automatically if it can.</td></tr>
+        <tr><td><strong>Torches</strong> <em>(optional)</em></td><td>A stack in <strong>slot 15</strong> to light the corridor as it goes.</td></tr>
+        <tr><td><strong>Filler blocks</strong> <em>(optional)</em></td><td>Cobblestone (or any cheap block) in <strong>slot 14</strong> to bridge gaps in the floor.</td></tr>
+        <tr><td><strong>Ender Chest</strong> <em>(optional)</em></td><td>One in <strong>slot 16</strong> to auto-dump loot; pair it with a chest at base.</td></tr>
+      </tbody>
+    </table>
+    <p>Everything optional only engages if it's actually stocked — an empty slot just means that feature is skipped, and <code>dig</code> tells you which ones are on before it starts.</p>
+  </section>
+
+  <section id="code">
+    <h2><span class="num">3</span>Get the code in-game</h2>
+    <p>The turtle needs the project files. Bootstrap once with <code>update.lua</code>, then re-run <code>update</code> after any change.</p>
+    <ol class="steps">
+      <li>On a fresh turtle, pull the updater once:
+        <pre><code><span class="prompt">&gt;</span> wget https://raw.githubusercontent.com/cpopson/ATM10-miningTurtles/master/update.lua update.lua
+<span class="prompt">&gt;</span> update</code></pre>
+      </li>
+      <li>After every push to GitHub, just run <code>update</code> again.</li>
+    </ol>
+  </section>
+
+  <section id="geometry">
+    <h2><span class="num">4</span>Geometry — place it right</h2>
+    <p>The corridor is measured relative to <strong>how the turtle faces</strong> when you start it. The turtle stands <em>in</em> the mouth — its own block is the first cell — and the tunnel grows:</p>
+    <table>
+      <thead><tr><th>Dimension</th><th>Direction</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Length</strong> (1st number)</td><td><strong>Forward</strong> — the way the turtle is facing</td></tr>
+        <tr><td><strong>Width</strong> (2nd number)</td><td>To the turtle's <strong>right</strong></td></tr>
+        <tr><td><strong>Height</strong> (3rd number)</td><td>Straight <strong>up</strong></td></tr>
+      </tbody>
+    </table>
+    <div class="diagram" aria-label="Side view of a 2-tall corridor: the turtle sits in the mouth, the corridor runs forward, a torch stands on the floor, and a gap under the floor is filled.">
+      <p class="cap" style="margin:0 0 12px;">side view · a 2-tall corridor, from the mouth</p>
+      <div class="tv">
+        <div class="ylab">height ↑</div>
+        <div class="cells">
+          <!-- top corridor row (u=1) -->
+          <div class="cell air"></div><div class="cell air"></div><div class="cell air"></div>
+          <div class="cell air"></div><div class="cell air"></div><div class="cell air"></div>
+          <!-- bottom corridor row (u=0): turtle at mouth, a torch further along -->
+          <div class="cell air"><span class="turtle">▸</span></div><div class="cell air"></div>
+          <div class="cell air"><span class="torch"></span></div><div class="cell air"></div>
+          <div class="cell air"></div><div class="cell air"></div>
+          <!-- floor row (one below): solid, with one filled gap -->
+          <div class="cell rock"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell rock"></div><div class="cell fill">fill</div><div class="cell rock"></div>
+        </div>
+        <div class="xlab">length (forward) →</div>
+      </div>
+    </div>
+    <p><span style="color:var(--accent);font-weight:600;">▸</span> is the turtle in the mouth; the <span style="color:var(--torch);font-weight:600;">torch</span> sits on the floor a few blocks in; the <span style="color:var(--accent);font-weight:600;">fill</span> block bridges a gap under the corridor. <strong>Width</strong> extends into the page (to the turtle's right). The turtle returns to the mouth block, facing its original direction, when it finishes.</p>
+    <div class="callout note">
+      <span class="tag">Defaults</span>
+      <p>Give just a length and you get a <strong>1 wide × 2 tall</strong> corridor — the classic walk-through tunnel. Add a width and/or height for bigger bores.</p>
+    </div>
+  </section>
+
+  <section id="slots">
+    <h2><span class="num">5</span>Load the turtle</h2>
+    <p>Three slots at the <strong>bottom-right</strong> of the inventory are reserved; everything else (slots 1–13) is free for mined loot. Load only the features you want — leave a slot empty to skip it.</p>
+    <div class="diagram">
+      <p class="cap" style="margin:0 0 14px;">turtle inventory — reserved slots highlighted</p>
+      <div class="slotwrap">
+        <div class="slots">
+          <div class="slot loot"><span class="n">1</span></div>
+          <div class="slot loot"><span class="n">2</span></div>
+          <div class="slot loot"><span class="n">3</span></div>
+          <div class="slot loot"><span class="n">4</span></div>
+          <div class="slot loot"><span class="n">5</span></div>
+          <div class="slot loot"><span class="n">6</span></div>
+          <div class="slot loot"><span class="n">7</span></div>
+          <div class="slot loot"><span class="n">8</span></div>
+          <div class="slot loot"><span class="n">9</span></div>
+          <div class="slot loot"><span class="n">10</span></div>
+          <div class="slot loot"><span class="n">11</span></div>
+          <div class="slot loot"><span class="n">12</span></div>
+          <div class="slot loot"><span class="n">13</span></div>
+          <div class="slot filler"><span class="n">14</span>fill</div>
+          <div class="slot torch"><span class="n">15</span>torch</div>
+          <div class="slot chest"><span class="n">16</span>ender</div>
+        </div>
+        <div class="legend">
+          <div class="row"><span class="sw chest"></span><span><b>Slot 16 — Ender Chest.</b> <small>Auto-dumps loot in place when the loot slots fill.</small></span></div>
+          <div class="row"><span class="sw torch"></span><span><b>Slot 15 — Torches.</b> <small>One on the floor every few blocks (height ≥ 2).</small></span></div>
+          <div class="row"><span class="sw filler"></span><span><b>Slot 14 — Filler.</b> <small>Cobble to patch gaps in the corridor floor.</small></span></div>
+          <div class="row"><span class="sw loot"></span><span><b>Slots 1–13 — Loot.</b> <small>Mined blocks collect here.</small></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="tag">Torches need headroom</span>
+      <p>A torch is placed from one block up, so a <strong>1-tall tunnel (<code>height 1</code>) skips torches entirely</strong> — there's nowhere to stand to place them. Use height 2+ if you want it lit.</p>
+    </div>
+  </section>
+
+  <section id="run">
+    <h2><span class="num">6</span>Run it</h2>
+    <ol class="steps">
+      <li>Place the turtle <strong>in the tunnel mouth, facing the dig direction</strong>.</li>
+      <li>Load fuel and any optional slots (section 5), then <code>refuel all</code>.</li>
+      <li>Run <code>dig</code> with a length, and optionally a width and height:
+        <pre><code><span class="prompt">&gt;</span> dig &lt;length&gt; [width] [height]</code></pre>
+      </li>
+    </ol>
+    <p>A typical lit, floor-patched 3×3 bore, 24 long:</p>
+    <pre><code><span class="prompt">&gt;</span> dig 24 3 3
+<span class="out">Ender Chest in slot 16 - will auto-dump loot when full.
+Torches in slot 15 - placing one every 8 blocks.
+Filler in slot 14 - floor gaps will be patched.
+Tunnelling 24 long, 3 wide, 3 tall (~216 cells)...</span>
+<span class="good">DONE: cleared 215 cells (3 torches, 2 fills, 1 dumps), back at start.</span></code></pre>
+    <table>
+      <thead><tr><th>Example</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td><code>dig 20</code></td><td>A 1-wide, 2-tall walk-through tunnel, 20 long.</td></tr>
+        <tr><td><code>dig 32 1 3</code></td><td>A 1-wide, 3-tall corridor (extra headroom), 32 long.</td></tr>
+        <tr><td><code>dig 24 3 3</code></td><td>A 3×3 bore, 24 long.</td></tr>
+        <tr><td><code>dig 16 4 2</code></td><td>A wide 4×2 hallway, 16 long.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="output">
+    <h2><span class="num">7</span>Reading the output</h2>
+    <p>Before it starts, <code>dig</code> prints one line per optional feature so you can confirm what's on. When it finishes it prints one of two lines:</p>
+    <h3>Success</h3>
+    <pre><code><span class="good">DONE: cleared 215 cells (3 torches, 2 fills, 1 dumps), back at start.</span></code></pre>
+    <ul>
+      <li><strong>cells</strong> — blocks the turtle moved through (one shy of <code>W×L×H</code>; the mouth is the entry, not a dig).</li>
+      <li><strong>torches / fills / dumps</strong> — how many torches it placed, floor gaps it patched, and loot dumps it made.</li>
+      <li><strong>back at start</strong> — it returned to the mouth block, facing its original heading.</li>
+    </ul>
+    <h3>Aborted</h3>
+    <pre><code><span class="bad">ABORTED (no_fuel) after 88 cells, 1 levels.</span>
+<span class="out">  stopped at (6,0,-8) h=0 relative to start.</span></code></pre>
+    <p>It stops cleanly and tells you where. Common reasons:</p>
+    <table>
+      <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>no_fuel</code></td><td>Ran out of fuel mid-dig. Refuel and re-run (it'll re-cut from the mouth).</td></tr>
+        <tr><td><code>blocked_unbreakable</code></td><td>Hit bedrock or another unbreakable block in the corridor.</td></tr>
+        <tr><td><code>blocked_retry_exceeded</code></td><td>Something kept refilling the space (falling gravel/sand past the retry budget).</td></tr>
+        <tr><td><code>dump_place_failed</code></td><td>Couldn't place the Ender Chest to dump (obstruction above). Rare.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout note">
+      <span class="tag">The stall position</span>
+      <p>The <code>stopped at (x,y,z) h=…</code> line is <em>relative to the mouth</em> (where you started), so you can find the turtle: <code>x</code> = right, <code>y</code> = up, <code>z</code> = forward (negative), <code>h</code> = its heading.</p>
+    </div>
+  </section>
+
+  <section id="tuning">
+    <h2><span class="num">8</span>Tuning (<code>config.lua</code>)</h2>
+    <p>The reserved slots and torch spacing live in <code>config.lua</code>. Change a value, run <code>update</code>, and it takes effect.</p>
+    <table>
+      <thead><tr><th>Key</th><th>Default</th><th>Controls</th></tr></thead>
+      <tbody>
+        <tr><td><code>chestSlot</code></td><td><code>16</code></td><td>Slot the Ender Chest lives in.</td></tr>
+        <tr><td><code>torchSlot</code></td><td><code>15</code></td><td>Slot the torches live in.</td></tr>
+        <tr><td><code>fillerSlot</code></td><td><code>14</code></td><td>Slot the filler blocks live in.</td></tr>
+        <tr><td><code>torchEvery</code></td><td><code>8</code></td><td>Blocks between torches along the corridor.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout note">
+      <span class="tag">Keep them contiguous</span>
+      <p>The reserved slots sit at the top of the inventory so the loot region below them stays contiguous. If you move one, keep the trio together (e.g. 16/15/14) so loot never spills into a reserved slot.</p>
+    </div>
+  </section>
+
+  <section id="troubleshoot">
+    <h2><span class="num">9</span>Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><em>"usage: dig …"</em> and nothing runs</td><td>You didn't give a length. The first number is required: <code>dig 20</code>.</td></tr>
+        <tr><td><em>"Low fuel…"</em> and it stops</td><td>Add coal/charcoal and <code>refuel all</code>. It needs ~<code>width × length × height</code> plus the trip back.</td></tr>
+        <tr><td>Corridor is dark</td><td>No torches in slot 15, or the tunnel is only 1 tall. Stock slot 15 and use height ≥ 2.</td></tr>
+        <tr><td>Floor still has holes</td><td>No filler in slot 14 — add cobblestone there. (Fill only patches gaps directly under the corridor.)</td></tr>
+        <tr><td>Loot dropped on the ground</td><td>No Ender Chest in slot 16, so the turtle overflowed. Add one (or run shorter tunnels).</td></tr>
+        <tr><td>Turtle stopped partway</td><td>Read the <code>ABORTED (reason)</code> line (section 7). Usually fuel or an unbreakable block.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+<footer>
+  <p><strong>cc-fleet-miner</strong> — the <code>dig</code> (tunnel) program. Files: <code>dig.lua</code> (driver), <code>tunnel.lua</code> (pattern), <code>nav.lua</code>, <code>config.lua</code>. See <code>README.md</code> for the module map, and <code>docs/control.html</code> for the multi-turtle control station.</p>
+</footer>
+
+</body>
+</html>

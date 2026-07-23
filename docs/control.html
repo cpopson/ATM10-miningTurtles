@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cc-fleet-miner — Control Station Guide</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --ink: #1c2128;
+    --muted: #5b6672;
+    --line: #e2e6eb;
+    --accent: #2f7d4f;
+    --accent-soft: #e6f2ec;
+    --code-bg: #f2f4f7;
+    --code-ink: #10331f;
+    --kbd-bg: #2b3138;
+    --kbd-ink: #f0f2f4;
+    --warn-bg: #fff6e6;
+    --warn-line: #f0c674;
+    --warn-ink: #6b4e12;
+    --note-bg: #eef4ff;
+    --note-line: #a9c6f5;
+    --note-ink: #234072;
+    --term-bg: #0e1116;
+    --term-ink: #b9f5c8;
+    --term-dim: #6f8a78;
+    --shadow: 0 1px 2px rgba(16,24,32,.06), 0 8px 24px rgba(16,24,32,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --ink: #e6edf3;
+      --muted: #9aa7b4;
+      --line: #262d36;
+      --accent: #56c883;
+      --accent-soft: #14251b;
+      --code-bg: #1b222b;
+      --code-ink: #a7e9bd;
+      --kbd-bg: #05070a;
+      --kbd-ink: #e6edf3;
+      --warn-bg: #2a2314;
+      --warn-line: #6b581f;
+      --warn-ink: #e6cf8a;
+      --note-bg: #12203a;
+      --note-line: #274a80;
+      --note-ink: #bcd4fa;
+      --term-bg: #05070a;
+      --term-ink: #7be39a;
+      --term-dim: #4c6754;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 22px 96px;
+  }
+  header.hero {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 22px 30px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  h1 {
+    font-size: 2.35rem;
+    line-height: 1.1;
+    margin: 16px 0 8px;
+    letter-spacing: -.02em;
+  }
+  h1 .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; color: var(--accent); }
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0; max-width: 62ch; }
+  .meta-row { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-size: 12.5px;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 4px 11px;
+    border-radius: 999px;
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  nav.toc {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin: 8px 0 40px;
+    box-shadow: var(--shadow);
+  }
+  nav.toc p { margin: 0 0 10px; font-weight: 700; font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { margin: 0; padding: 0; list-style: none; counter-reset: toc; columns: 2; column-gap: 32px; }
+  nav.toc li { counter-increment: toc; margin: 0 0 7px; break-inside: avoid; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a::before { content: counter(toc) ". "; color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+
+  section { margin: 0 0 44px; scroll-margin-top: 20px; }
+  h2 {
+    font-size: 1.5rem;
+    letter-spacing: -.01em;
+    margin: 0 0 4px;
+    padding-top: 14px;
+    border-top: 2px solid var(--line);
+  }
+  h2 .num {
+    display: inline-block;
+    min-width: 1.7em;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  h3 { font-size: 1.12rem; margin: 28px 0 6px; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); }
+
+  ul, ol.steps { padding-left: 1.3em; }
+  li { margin: 6px 0; }
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li {
+    position: relative;
+    padding: 4px 0 4px 44px;
+    margin: 14px 0;
+    counter-increment: step;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 2px;
+    width: 30px; height: 30px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-weight: 700; font-size: .92rem;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .88em;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 2px 6px;
+    border-radius: 5px;
+  }
+  pre {
+    background: var(--term-bg);
+    color: var(--term-ink);
+    border-radius: 12px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .86rem;
+    line-height: 1.55;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--line);
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+  pre .cmt { color: var(--term-dim); }
+  pre .prompt { color: #59b6ff; }
+  pre .out { color: #d7dde3; }
+
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--kbd-bg);
+    color: var(--kbd-ink);
+    border-radius: 6px;
+    padding: 2px 9px;
+    font-size: .82em;
+    font-weight: 600;
+    box-shadow: 0 2px 0 rgba(0,0,0,.35);
+    display: inline-block;
+    min-width: 1.4em;
+    text-align: center;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: .93rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { background: var(--accent-soft); color: var(--ink); font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  .callout {
+    border-radius: 12px;
+    padding: 14px 16px 14px 18px;
+    margin: 18px 0;
+    border-left: 4px solid;
+    font-size: .95rem;
+  }
+  .callout p { margin: 6px 0; }
+  .callout .tag { font-weight: 700; letter-spacing: .04em; font-size: .78rem; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .note { background: var(--note-bg); border-color: var(--note-line); color: var(--note-ink); }
+  .note .tag { color: var(--note-line); }
+  .warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .warn .tag { color: var(--warn-line); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+  }
+  .card h3 { margin-top: 0; }
+  .card p { margin: 6px 0 0; font-size: .92rem; color: var(--muted); }
+
+  .diagram {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    margin: 16px 0;
+    overflow-x: auto;
+    box-shadow: var(--shadow);
+  }
+  .diagram pre { background: none; color: var(--ink); box-shadow: none; border: none; padding: 0; font-size: .8rem; }
+
+  footer {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 30px 22px 60px;
+    color: var(--muted);
+    font-size: .88rem;
+    border-top: 1px solid var(--line);
+  }
+  footer code { font-size: .85em; }
+
+  @media (max-width: 640px) {
+    nav.toc ol { columns: 1; }
+    .grid2 { grid-template-columns: 1fr; }
+    h1 { font-size: 1.9rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="eyebrow">cc-fleet-miner · CC:Tweaked</span>
+  <h1>The <span class="mono">control.lua</span> Station</h1>
+  <p class="lede">Set up and command a fleet of 2–5 mining turtles from one control computer — an on-screen job wizard, a live dashboard, fleet-wide keyboard controls, and crash-safe resume.</p>
+  <div class="meta-row">
+    <span class="chip"><b>Modpack:</b> All the Mods 10</span>
+    <span class="chip"><b>MC:</b> 1.21.1 · NeoForge</span>
+    <span class="chip"><b>Pattern:</b> quarry</span>
+    <span class="chip"><b>Fleet:</b> 2–5 turtles</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#overview">What control.lua is</a></li>
+      <li><a href="#need">What you need</a></li>
+      <li><a href="#code">Get the code in-game</a></li>
+      <li><a href="#geometry">Understand the geometry</a></li>
+      <li><a href="#start-control">Start the control station</a></li>
+      <li><a href="#setup-wizard">The setup wizard</a></li>
+      <li><a href="#start-turtles">Place &amp; start the turtles</a></li>
+      <li><a href="#dashboard">The live dashboard</a></li>
+      <li><a href="#controls">Keyboard controls</a></li>
+      <li><a href="#resume">Pause, stop &amp; resume</a></li>
+      <li><a href="#config">Tuning (config.lua)</a></li>
+      <li><a href="#troubleshoot">Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <section id="overview">
+    <h2><span class="num">1</span>What <code>control.lua</code> is</h2>
+    <p><code>control.lua</code> is the <strong>brain of the fleet</strong>. It runs on a single computer with a modem and does four things at once:</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Plans the job</h3>
+        <p>An on-screen wizard collects the pattern, box dimensions, origin, and turtle count — then splits the box into non-overlapping column-strips, one per turtle.</p>
+      </div>
+      <div class="card">
+        <h3>Assigns &amp; tracks</h3>
+        <p>As turtles register over rednet, it hands each one a strip, watches their progress heartbeats, and re-assigns any strip that goes silent.</p>
+      </div>
+      <div class="card">
+        <h3>Shows a dashboard</h3>
+        <p>A live, flicker-free table — one row per turtle (label, state, fuel, blocks mined, current job) plus queue and failure counts.</p>
+      </div>
+      <div class="card">
+        <h3>Steers the fleet</h3>
+        <p>Single keystrokes pause, resume, stop, or send the whole fleet home. Job state is saved to disk every pump, so a reboot resumes automatically.</p>
+      </div>
+    </div>
+    <div class="callout note">
+      <span class="tag">Two halves of one system</span>
+      <p><code>control.lua</code> is the <em>coordinator</em>. Each turtle runs <code>fleet.lua</code>, the <em>worker</em>. This guide covers the whole loop: you run <code>control</code> on the computer and <code>fleet</code> on every turtle.</p>
+    </div>
+  </section>
+
+  <section id="need">
+    <h2><span class="num">2</span>What you need</h2>
+    <table>
+      <thead><tr><th>Machine</th><th>Requirements</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>1× Control computer</strong></td>
+          <td>A regular (or advanced) computer with a <strong>wireless or ender modem</strong> attached to any side. A monitor is optional — the dashboard renders on the computer's own terminal.</td>
+        </tr>
+        <tr>
+          <td><strong>2–5× Mining turtles</strong></td>
+          <td>Each needs a <strong>modem</strong> (same kind — wireless or ender), <strong>fuel</strong> (coal/charcoal → <code>refuel all</code>), and ideally a <strong>chunk loader</strong> so it keeps running while you're away. An <strong>Advanced</strong> Mining Turtle gives colored output.</td>
+        </tr>
+        <tr>
+          <td><strong>Ender Chests (optional)</strong></td>
+          <td>One in <strong>turtle slot 16</strong> auto-dumps loot in place when the inventory fills. Pair it with a matching chest at base for hands-free storage.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout note">
+      <span class="tag">GPS not required</span>
+      <p>Turtles track their position from a start pose <em>you</em> supply — no GPS towers needed. That's why you pass each turtle its coordinates when you launch it (see step&nbsp;7).</p>
+    </div>
+  </section>
+
+  <section id="code">
+    <h2><span class="num">3</span>Get the code in-game</h2>
+    <p>Every machine — the control computer <em>and</em> each turtle — needs the project files. Bootstrap once with <code>update.lua</code>, then re-run <code>update</code> after any change.</p>
+    <ol class="steps">
+      <li>Make sure <code>BASE</code> in <code>update.lua</code> points at your repo's raw-content URL (ending in <code>/</code>).</li>
+      <li>On a fresh computer or turtle, pull the updater once:
+        <pre><code><span class="prompt">&gt;</span> wget https://raw.githubusercontent.com/cpopson/ATM10-miningTurtles/master/update.lua update.lua
+<span class="prompt">&gt;</span> update</code></pre>
+      </li>
+      <li>After every push to GitHub, just run <code>update</code> again on each machine.</li>
+    </ol>
+    <p>CC:Tweaked has HTTP enabled and whitelists GitHub by default, so <code>wget</code> works out of the box.</p>
+  </section>
+
+  <section id="geometry">
+    <h2><span class="num">4</span>Understand the geometry (read this first)</h2>
+    <p>Getting the box direction right in your head <em>before</em> you place turtles saves a lot of re-digging. Everything is relative to how a turtle <strong>faces</strong>:</p>
+    <table>
+      <thead><tr><th>Dimension</th><th>Direction</th><th>Axis</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Width</strong></td><td>to the turtle's <strong>right</strong></td><td><code>+X</code></td></tr>
+        <tr><td><strong>Length</strong></td><td><strong>behind</strong> the turtle</td><td><code>+Z</code></td></tr>
+        <tr><td><strong>Depth</strong></td><td><strong>down</strong></td><td><code>−Y</code></td></tr>
+      </tbody>
+    </table>
+    <div class="diagram" aria-label="Top-down view of a box split into per-turtle column strips">
+<pre>            WIDTH  (+X, turtles' right)  →
+        ┌───────┬───────┬───────┐   ▲ turtle here, facing "into" the page
+        │ strip │ strip │ strip │   │  (one block ABOVE the top corner)
+LENGTH  │   0   │   1   │   2   │   │
+(+Z,    │  T#1  │  T#2  │  T#3  │   each turtle clears its own column-strip
+behind) │       │       │       │   top-to-bottom — columns never overlap.
+        └───────┴───────┴───────┘
+                                 DEPTH goes straight DOWN (−Y)</pre>
+    </div>
+    <p>The coordinator splits the box into <strong>column-strips by X range</strong> and gives each turtle one slab to clear top-to-bottom. Because the strips never share a column, collision avoidance is <strong>structural</strong> — there's no runtime turtle-to-turtle dodging to go wrong.</p>
+    <div class="callout note">
+      <span class="tag">Heading convention</span>
+      <p><code>0 = north (−Z)</code>, <code>1 = east (+X)</code>, <code>2 = south (+Z)</code>, <code>3 = west (−X)</code>. Coordinates match Minecraft/GPS axes. Turtles launch facing heading&nbsp;0 by default.</p>
+    </div>
+  </section>
+
+  <section id="start-control">
+    <h2><span class="num">5</span>Start the control station</h2>
+    <p>On the control computer, just run:</p>
+    <pre><code><span class="prompt">&gt;</span> control</code></pre>
+    <p>On launch it does one of two things:</p>
+    <ul>
+      <li><strong>No saved job</strong> → it drops straight into the setup wizard (step&nbsp;6).</li>
+      <li><strong>A running job was saved</strong> (the computer crashed or rebooted mid-run) → it asks:
+        <pre><code><span class="out">Saved job found. [R]esume or [N]ew?</span> </code></pre>
+        Press <kbd>R</kbd> (or Enter) to pick up exactly where it left off, or <kbd>N</kbd> to discard it and set up a fresh job.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="tag">No modem?</span>
+      <p>If you see <em>"No modem found"</em>, attach a wireless or ender modem to any side of the computer and run <code>control</code> again. The station scans all six sides automatically.</p>
+    </div>
+  </section>
+
+  <section id="setup-wizard">
+    <h2><span class="num">6</span>The setup wizard</h2>
+    <p>The wizard asks a few questions, validates each answer, and re-asks anything invalid. It asks for the turtle count <strong>once</strong>, then walks one box at a time — you can queue several boxes.</p>
+    <pre><code><span class="out">=== cc-fleet-miner : job setup ===</span>
+<span class="prompt">Turtles in the fleet [2]:</span> 3
+<span class="prompt">Pattern (quarry) [quarry]:</span>
+<span class="prompt">Width  (+X, to the turtles' right):</span> 6
+<span class="prompt">Length (+Z, behind the turtles):</span> 6
+<span class="prompt">Depth  (blocks down):</span> 10
+<span class="prompt">Origin x [0]:</span>
+<span class="prompt">Origin y [1]:</span>
+<span class="prompt">Origin z [0]:</span>
+<span class="prompt">Strips (blank = one per turtle):</span>
+<span class="out">  box added (1 queued)</span>
+<span class="prompt">Add another box? (y/N) [n]:</span>
+<span class="out">Waiting for 3 turtles to register...</span></code></pre>
+    <table>
+      <thead><tr><th>Prompt</th><th>What to enter</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Turtles in the fleet</strong></td><td>How many turtles you'll launch (2–5). This is the number the station waits for before assigning work.</td></tr>
+        <tr><td><strong>Pattern</strong></td><td><code>quarry</code> — clears the whole box. (Branch &amp; tunnel patterns are on the roadmap.)</td></tr>
+        <tr><td><strong>Width / Length / Depth</strong></td><td>The box size in blocks — see the geometry section. Whole numbers ≥ 1.</td></tr>
+        <tr><td><strong>Origin x / y / z</strong></td><td>The box's reference corner in the shared coordinate frame. Defaults <code>(0, 1, 0)</code> are fine for a first run — just make the turtle coords you pass later match this frame.</td></tr>
+        <tr><td><strong>Strips</strong></td><td>Leave blank for one strip per turtle (the usual choice). Override only if you want to split the box into a different number of slabs than turtles.</td></tr>
+        <tr><td><strong>Add another box?</strong></td><td><kbd>y</kbd> to queue a second box, anything else to finish. See the multi-box caveat below.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout warn">
+      <span class="tag">Multi-box caveat</span>
+      <p>Each turtle mines <em>relative to its own position</em>, so a queue of boxes tiles cleanly only when the boxes share an origin region (re-runs, stacked layers). Boxes at <strong>different physical locations</strong> need the turtles repositioned and restarted between them — full relocation waits on GPS. For your first job, queue just one box.</p>
+    </div>
+  </section>
+
+  <section id="start-turtles">
+    <h2><span class="num">7</span>Place &amp; start the turtles</h2>
+    <p>With the station waiting, set up each turtle. For turtle <em>i</em>:</p>
+    <ol class="steps">
+      <li>Place it <strong>one block above the top corner of its strip</strong>, facing the box (heading&nbsp;0 / north by default).</li>
+      <li>Fuel it: coal/charcoal in a slot, then <code>refuel all</code>. It needs roughly <code>width × length × depth</code> for its slab plus the return trip.</li>
+      <li><em>(Optional)</em> Drop an <strong>Ender Chest into slot 16</strong> for auto-dump.</li>
+      <li><em>(Optional but recommended)</em> Give it a name so the dashboard shows it: <code>label set alpha</code>.</li>
+      <li>Launch the worker with that corner's coordinates:
+        <pre><code><span class="prompt">&gt;</span> fleet &lt;x&gt; &lt;y&gt; &lt;z&gt;
+<span class="cmt">-- e.g. the turtle sitting at the strip corner (2,1,0):</span>
+<span class="prompt">&gt;</span> fleet 2 1 0
+<span class="out">Turtle at (2,1,0). Registering with control...</span></code></pre>
+      </li>
+    </ol>
+    <p>The <code>&lt;x&gt; &lt;y&gt; &lt;z&gt;</code> are the turtle's position in the <strong>same coordinate frame</strong> the control computer uses. The coordinator position-matches each turtle to the correct strip, so you don't assign strips by hand — you just tell each turtle where it is. Omit the args and it defaults to <code>(0,0,0)</code>.</p>
+    <div class="callout note">
+      <span class="tag">The handshake</span>
+      <p>Each turtle <strong>broadcasts REGISTER</strong> → the station replies with <strong>ASSIGN</strong> (its strip) → the turtle sends <strong>PROGRESS</strong> every few blocks (this doubles as its heartbeat) → <strong>DONE</strong> when its strip is clear, or <strong>ERROR</strong> if it gets stuck. A turtle that's still waiting re-announces itself every ~10s, so an early or dropped REGISTER heals itself.</p>
+    </div>
+  </section>
+
+  <section id="dashboard">
+    <h2><span class="num">8</span>The live dashboard</h2>
+    <p>Once turtles start registering, the terminal switches to a live, in-place table (redrawn a few times a second, no flicker):</p>
+    <pre><code><span class="out">cc-fleet-miner  running
+queued:0  strips:3 (1 done)  failed:0
+turtle       state     fuel   mined  job
+alpha        mining    842    128    0
+bravo        mining    790    96     1
+charlie      done      910    150    2</span>
+<span class="cmt">[P]ause [R]esume [S]top [H]ome [Q]uit</span></code></pre>
+    <table>
+      <thead><tr><th>Column / field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>running</code> / <code>[PAUSED]</code> / <code>[STOPPED]</code></td><td>The station's overall phase and control state (top line).</td></tr>
+        <tr><td><code>queued</code></td><td>Boxes still waiting in the queue to be partitioned.</td></tr>
+        <tr><td><code>strips (N done)</code></td><td>Total strips and how many turtles have finished theirs.</td></tr>
+        <tr><td><code>failed</code></td><td>Strips that exhausted their reassignment attempts and were given up on.</td></tr>
+        <tr><td><strong>turtle</strong></td><td>The turtle's <code>label</code> (from <code>label set</code>) or <code>#id</code> if unlabeled.</td></tr>
+        <tr><td><strong>state</strong></td><td><code>idle</code> · <code>mining</code> · <code>paused</code> · <code>stopped</code>.</td></tr>
+        <tr><td><strong>fuel</strong> / <strong>mined</strong></td><td>Current fuel level and blocks mined so far, from its latest heartbeat.</td></tr>
+        <tr><td><strong>job</strong></td><td>The strip index this turtle is currently clearing.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="controls">
+    <h2><span class="num">9</span>Keyboard controls</h2>
+    <p>The dashboard responds to single keystrokes at any time — they act on the <strong>whole fleet</strong> at once:</p>
+    <table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>P</kbd></td><td><strong>Pause</strong> — turtles park mid-strip and hold. Reversible.</td></tr>
+        <tr><td><kbd>R</kbd></td><td><strong>Resume</strong> — paused turtles pick their strips back up.</td></tr>
+        <tr><td><kbd>S</kbd></td><td><strong>Stop</strong> — terminal. Turtles abort exactly where they are.</td></tr>
+        <tr><td><kbd>H</kbd></td><td><strong>Home</strong> — every turtle returns to its start block, then stops.</td></tr>
+        <tr><td><kbd>Q</kbd></td><td><strong>Quit</strong> the station. Turtles keep running their last command.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout note">
+      <span class="tag">Stop latency</span>
+      <p>Turtles check for control commands between PROGRESS pings, so a Pause/Stop lands within about <code>progressEvery</code> blocks (default 8) — not instantly, but quickly.</p>
+    </div>
+  </section>
+
+  <section id="resume">
+    <h2><span class="num">10</span>Pause, stop &amp; resume</h2>
+    <p>Two independent safety nets keep a long run recoverable:</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Reboot-safe station</h3>
+        <p>The coordinator writes its job state to disk <strong>every pump</strong>. If the control computer crashes or you reboot it, re-run <code>control</code> and press <kbd>R</kbd> at the <em>"Saved job found"</em> prompt — it resumes, and turtles re-sync from their next heartbeat.</p>
+      </div>
+      <div class="card">
+        <h3>Self-healing assignment</h3>
+        <p>If a turtle goes silent past <code>staleAfter</code> seconds (default 30), the coordinator reassigns its strip to another turtle. After <code>maxAttempts</code> failures (default 3) a strip is marked <em>failed</em> so one hopeless slab can't stall the whole job.</p>
+      </div>
+    </div>
+    <p>When every strip is <code>done</code> or <code>failed</code>, the station prints <code>Run complete.</code> and exits. If you quit early with <kbd>Q</kbd> or stop with <kbd>S</kbd>, it prints <code>Station stopped.</code></p>
+  </section>
+
+  <section id="config">
+    <h2><span class="num">11</span>Tuning (<code>config.lua</code>)</h2>
+    <p>All the timing and slot knobs live in one file, <code>config.lua</code>. Change a value, run <code>update</code> on the turtles <em>and</em> the control computer, and it takes effect everywhere.</p>
+    <table>
+      <thead><tr><th>Key</th><th>Default</th><th>What it controls</th></tr></thead>
+      <tbody>
+        <tr><td><code>protocol</code></td><td><code>"ccfleet"</code></td><td>The rednet protocol name shared by the computer and every turtle. All machines must match.</td></tr>
+        <tr><td><code>heartbeat</code></td><td><code>10</code></td><td>Seconds between a waiting turtle's re-REGISTER announcements.</td></tr>
+        <tr><td><code>staleAfter</code></td><td><code>30</code></td><td>Seconds of silence before the coordinator reassigns a strip. Keep it well above <code>heartbeat</code>.</td></tr>
+        <tr><td><code>progressEvery</code></td><td><code>8</code></td><td>Blocks mined between PROGRESS pings — also the Stop/Pause response latency.</td></tr>
+        <tr><td><code>chestSlot</code></td><td><code>16</code></td><td>Inventory slot reserved for the Ender Chest used by auto-dump.</td></tr>
+        <tr><td><code>maxAttempts</code></td><td><code>3</code></td><td>Reassignment attempts before a strip is marked permanently failed.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="troubleshoot">
+    <h2><span class="num">12</span>Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><em>"No modem found"</em> on <code>control</code> or <code>fleet</code></td>
+          <td>Attach a wireless/ender modem to any side and re-run. Both ends need the same kind.</td>
+        </tr>
+        <tr>
+          <td>Station stuck at <em>"Waiting for N turtles to register…"</em></td>
+          <td>Confirm each turtle is actually running <code>fleet</code>, its modem is attached, and every machine shares the same <code>protocol</code> in <code>config.lua</code>. Wireless modems also have a range limit — ender modems are unlimited.</td>
+        </tr>
+        <tr>
+          <td>A turtle shows <code>idle</code> and never gets a strip</td>
+          <td>Its reported position doesn't match any unassigned strip. Re-check the <code>fleet x y z</code> coords against the box origin and geometry.</td>
+        </tr>
+        <tr>
+          <td>Turtle stops early / <code>ERROR</code></td>
+          <td>Usually out of fuel or hit bedrock. Refuel (<code>refuel all</code>) — it needs ~<code>width × length × depth</code> plus the return trip — and make sure the box bottom is above bedrock.</td>
+        </tr>
+        <tr>
+          <td>Loot dropping on the ground</td>
+          <td>Put an Ender Chest in slot&nbsp;16 (or the <code>chestSlot</code> you configured) so full inventories dump in place instead of overflowing.</td>
+        </tr>
+        <tr>
+          <td>Turtles stop when you walk away</td>
+          <td>They're unloaded. Use a chunk loader / chunky turtle to keep them running while you're gone.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+<footer>
+  <p><strong>cc-fleet-miner</strong> — control station guide. Files referenced: <code>control.lua</code>, <code>setup.lua</code>, <code>fleet.lua</code>, <code>coordinator.lua</code>, <code>worker.lua</code>, <code>config.lua</code>, <code>update.lua</code>. See <code>README.md</code> for full design detail and the module map.</p>
+</footer>
+
+</body>
+</html>

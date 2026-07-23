@@ -26,8 +26,16 @@ return {
   -- interval, so stop latency is at most this many blocks).
   progressEvery = 8,
 
-  -- Inventory slot reserved for the Ender Chest used by quarry auto-dump.
+  -- Inventory slot reserved for the Ender Chest used by quarry/tunnel auto-dump.
   chestSlot = 16,
+
+  -- Tunnel (`dig`) reserved slots + torch spacing. Torches go in torchSlot, floor
+  -- filler (cobble) in fillerSlot; a torch is placed every `torchEvery` blocks
+  -- along the corridor (needs height >= 2). Kept below chestSlot so the loot
+  -- region stays contiguous.
+  torchSlot = 15,
+  fillerSlot = 14,
+  torchEvery = 8,
 
   -- Coordinator: reassignment attempts before a strip is marked permanently
   -- failed (so a hopeless job can't stall completion forever).

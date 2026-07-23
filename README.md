@@ -42,7 +42,9 @@ Three principles drive every design decision here:
 | `test_quarry.lua` | 11-scenario suite for `quarry` (coverage, dump, edge cases)                  | ✅ 11/11 |
 | `mine.lua`        | In-game driver: run a quarry on a turtle (`mine <w> <l> <d>`)                | ✅ done  |
 | `branch.lua`      | Branch/strip pattern generator                                              | ⬜ todo  |
-| `tunnel.lua`      | Tunnel pattern generator                                                    | ⬜ todo  |
+| `tunnel.lua`      | Tunnel pattern generator (single-turtle W×L×H corridor: dump, return, torches, floor-fill) | ✅ done |
+| `test_tunnel.lua` | 15-scenario suite for `tunnel` (coverage, torches, fill, dump, edges)        | ✅ 15/15 |
+| `dig.lua`         | In-game driver: run a tunnel on a turtle (`dig <length> [width] [height]`)   | ✅ done  |
 | `comms.lua`       | rednet messaging protocol (shared by control + turtles); injectable transport | ✅ done |
 | `rednet_transport.lua` | Real rednet/os adapter for `comms` (the only file touching `rednet`)    | ✅ done  |
 | `mockbus.lua`     | In-memory deterministic message bus for testing `comms`                     | ✅ done  |
@@ -157,6 +159,39 @@ dumps its loot into it in place whenever the other 15 slots fill up, then keeps
 mining — no trip home. Pair that chest with one at your base (feeding a hopper /
 ME import bus / RS importer) and the loot streams straight into storage. With no
 ender chest present it still mines, but overflow drops on the ground once full.
+
+---
+
+## Run a tunnel
+
+Cut a straight corridor with **`dig.lua`** — a thin in-game driver around the
+tested `tunnel.lua` module.
+
+1. Place the turtle **in the tunnel mouth**, facing the direction you want to
+   dig. Its own cell is the start of the corridor.
+2. Fuel it (`refuel all`) and `update` to pull the latest files.
+3. Run:
+   ```
+   dig <length> [width] [height]
+   ```
+   e.g. `dig 20` cuts a 1-wide, 2-tall corridor 20 long; `dig 20 3 3` cuts a
+   3×3 corridor. It prints `DONE: cleared N cells (T torches, F fills, D dumps),
+   back at start`, or `ABORTED (reason)` on bedrock / low fuel.
+
+**Geometry** — relative to how the turtle faces, the corridor extends **forward**
+for length, **right** (`+`) for width, and **up** for height. The turtle returns
+to the mouth, facing its original heading, when finished.
+
+**Optional reserved slots** (each engages only if stocked):
+
+- **Slot 16 — Ender Chest:** auto-dumps loot in place when the loot slots fill.
+- **Slot 15 — Torches:** one placed on the floor every `torchEvery` blocks
+  (default 8). Needs height ≥ 2 (a 1-tall tunnel has no headroom to place them).
+- **Slot 14 — Filler (cobble):** patches any gap in the corridor floor so you
+  don't fall through caves or lava.
+
+Slots, spacing, and the ender slot live in `config.lua` (`torchSlot`,
+`fillerSlot`, `torchEvery`, `chestSlot`).
 
 ---
 
@@ -319,7 +354,9 @@ communication over a single named protocol.
 3. ✅ Comms protocol (`comms` + `rednet_transport` + `mockbus` + `test_comms` 9/9)
 4. ✅ Coordinator: partition + assign + track + reassign (`test_coordinator` 21/21, `test_fleet` 3/3)
 5. ✅ Control station: multi-box queue, live Pause/Resume/Stop/Return, on-screen job setup, reboot persistence (`store` + `jobspec`)
-6. ⬜ Branch + tunnel patterns (+ tests) ← **next**
-7. ⬜ Basalt UI (mouse/buttons) over the plain-terminal station
-8. ⬜ Turtle-side progress persistence (resume a strip mid-way, not from the top)
-9. ⬜ Advanced Peripherals integration (Geo Scanner ore-seeking, ME/RS auto-dump)
+6. ✅ Tunnel pattern (single-turtle W×L×H corridor + torches + floor-fill) — `tunnel` + `test_tunnel` 15/15 + `dig` driver
+7. ⬜ Branch/strip pattern (+ tests) ← **next**
+8. ⬜ Fleet-integrate the tunnel pattern (pattern-aware jobspec/partition/worker so `control` runs parallel tunnels)
+9. ⬜ Basalt UI (mouse/buttons) over the plain-terminal station
+10. ⬜ Turtle-side progress persistence (resume a strip mid-way, not from the top)
+11. ⬜ Advanced Peripherals integration (Geo Scanner ore-seeking, ME/RS auto-dump)
