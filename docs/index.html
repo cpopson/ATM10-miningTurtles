@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cc-fleet-miner — Documentation</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* index.html — page-specific: the clickable guide cards. */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 18px 0 8px; }
+  a.doc {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; box-shadow: var(--shadow);
+    border-top: 3px solid var(--accent);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  a.doc:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(16,24,32,.08), 0 14px 34px rgba(16,24,32,.12); }
+  a.doc h3 { margin: 0 0 2px; font-size: 1.12rem; color: var(--accent); }
+  a.doc .file { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; color: var(--muted); }
+  a.doc p { margin: 9px 0 0; font-size: .92rem; color: var(--muted); }
+  a.doc .when { margin-top: 10px; font-size: .86rem; color: var(--ink); }
+  a.doc .when b { color: var(--accent); font-weight: 650; }
+  .plans { margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="eyebrow">cc-fleet-miner · CC:Tweaked</span>
+  <h1>Documentation</h1>
+  <p class="lede">Operator guides for a fleet of mining turtles on All the Mods 10 — running a quarry from a control station, cutting corridors with a single turtle, and the protocol underneath it all.</p>
+  <div class="meta-row">
+    <span class="chip"><b>Modpack:</b> All the Mods 10</span>
+    <span class="chip"><b>MC:</b> 1.21.1 · NeoForge</span>
+    <span class="chip"><b>Mod:</b> CC:Tweaked</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2><span class="num">1</span>Guides</h2>
+
+    <div class="cards">
+
+      <a class="doc" href="control.html">
+        <h3>The control.lua Station</h3>
+        <span class="file">control.html</span>
+        <p>Set up and command a fleet of 2–5 mining turtles from one control computer — on-screen job wizard, live dashboard, fleet-wide keyboard controls, and crash-safe resume.</p>
+        <p class="when"><b>Read it when</b> you want to run a quarry with several turtles from one computer + monitor.</p>
+      </a>
+
+      <a class="doc" href="dig.html">
+        <h3>The dig Program</h3>
+        <span class="file">dig.html</span>
+        <p>Send one turtle down a straight corridor of any size — torch-lit, its floor patched over caves and lava, its loot streamed into an Ender Chest — and it walks itself back to the mouth.</p>
+        <p class="when"><b>Read it when</b> you want one standalone turtle to cut a corridor. No modem required.</p>
+      </a>
+
+      <a class="doc" href="fleet-and-control.html">
+        <h3>How fleet talks to control</h3>
+        <span class="file">fleet-and-control.html</span>
+        <p>The <code>ccfleet</code> rednet protocol: the six message types, who sends what to whom, and a full run traced message by message.</p>
+        <p class="when"><b>Read it when</b> you're changing <code>comms.lua</code>, <code>coordinator.lua</code> or <code>worker.lua</code> — or debugging a fleet that won't start.</p>
+      </a>
+
+    </div>
+
+    <div class="callout note">
+      <span class="tag">Start here</span>
+      <p>New to the project? Read <a href="control.html">control.html</a> first — it's the operator guide. <a href="fleet-and-control.html">fleet-and-control.html</a> is its internals companion.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>Archived plans</h2>
+    <p><code>plans/</code> holds completed build plans, kept for their design rationale. They describe work that is already finished and are <strong>not</strong> current documentation — the code and its tests are the source of truth.</p>
+    <ul class="plans">
+      <li><a href="plans/quarry-plan.md">plans/quarry-plan.md</a> — how <code>quarry.lua</code> was designed and built: box geometry, the layer-flip rule, and the return path.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>Adding a guide</h2>
+    <p>Every page links one shared stylesheet, <code>style.css</code>, then adds only its own widgets inline:</p>
+<pre><code>&lt;link rel="stylesheet" href="style.css"&gt;
+&lt;style&gt;
+  <span class="cmt">/* only this page's own widgets go here */</span>
+&lt;/style&gt;</code></pre>
+    <p>The conventions that keep the set consistent — file naming, the <code>&lt;title&gt;</code> pattern, the <code>--wrap-max</code> override and the single <code>640px</code> breakpoint — are written up in <a href="README.md">README.md</a>.</p>
+  </section>
+
+</div>
+
+<footer>
+  <p><strong>cc-fleet-miner</strong> — UI-driven fleet mining for CC:Tweaked on All the Mods 10. See the repository <code>README.md</code> for the module map and test suite.</p>
+</footer>
+
+</body>
+</html>

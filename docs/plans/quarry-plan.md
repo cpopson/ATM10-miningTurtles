@@ -1,5 +1,23 @@
 # Plan: quarry.lua — the first mining pattern (+ deploy the os.exit fix)
 
+> **Status: COMPLETED — historical record, not current documentation.**
+>
+> This is the build plan that produced `quarry.lua`, kept for the design
+> rationale (box geometry, the both-headings flip between layers, the
+> `"xzy"` return path). It describes work that is already done, so treat
+> any "next step" or "not yet pushed" wording below as historical.
+>
+> | Planned | Shipped as |
+> | ------- | ---------- |
+> | Step 0 — guard `os.exit` in `test_nav.lua` | commit `b182d34` |
+> | Step 1 — `quarry.lua` | commit `66a27ee` |
+> | Step 2 — `test_quarry.lua`, 9 scenarios | commit `66a27ee`, 12 scenarios (added `s10_ender_dump_and_resume`, `s11_no_chest_no_dump`, `s12_onprogress_abort`) |
+> | Step 3 — `FILES` entry in `update.lua` | done |
+>
+> For how quarry is *used*, see the guides in [`docs/`](../README.md).
+> For what the code does now, read `quarry.lua` and `test_quarry.lua` —
+> they are the source of truth, not this file.
+
 ## Context
 
 The foundation (`nav`, `mockturtle`, `test_nav`, `probe`, `update`) is built,

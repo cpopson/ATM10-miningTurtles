@@ -4,97 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cc-fleet-miner — How fleet talks to control</title>
+<link rel="stylesheet" href="style.css">
 <style>
+  /* fleet-and-control.html — page-specific: the two speaker colours
+     (control / turtle) and the diagram widgets built from them — the strip
+     map (.frame/.strip), the sequence diagram (.seq/.msg/.bubble) and the
+     message-table badges (.role/.deliv). Shared palette, typography, tables
+     and callouts come from style.css. */
   :root {
-    --bg: #f7f8fa;
-    --panel: #ffffff;
-    --ink: #1c2128;
-    --muted: #5b6672;
-    --line: #e2e6eb;
-    --accent: #2f7d4f;
-    --accent-soft: #e6f2ec;
-    --code-bg: #f2f4f7;
-    --code-ink: #10331f;
-    --kbd-bg: #2b3138;
-    --kbd-ink: #f0f2f4;
-    --warn-bg: #fff6e6;
-    --warn-line: #f0c674;
-    --warn-ink: #6b4e12;
-    --note-bg: #eef4ff;
-    --note-line: #a9c6f5;
-    --note-ink: #234072;
-    --term-bg: #0e1116;
-    --term-ink: #b9f5c8;
-    --term-dim: #6f8a78;
+    /* wider shell than the default 900px — the sequence diagram needs it */
+    --wrap-max: 940px;
     /* role colours: the two speakers */
     --control: #2c62c9;
     --control-soft: #e7eefb;
     --turtle: #9a6a12;
     --turtle-soft: #fbf1e0;
     --grid: rgba(30,50,80,.05);
-    --shadow: 0 1px 2px rgba(16,24,32,.06), 0 8px 24px rgba(16,24,32,.06);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0d1117;
-      --panel: #161b22;
-      --ink: #e6edf3;
-      --muted: #9aa7b4;
-      --line: #262d36;
-      --accent: #56c883;
-      --accent-soft: #14251b;
-      --code-bg: #1b222b;
-      --code-ink: #a7e9bd;
-      --kbd-bg: #05070a;
-      --kbd-ink: #e6edf3;
-      --warn-bg: #2a2314;
-      --warn-line: #6b581f;
-      --warn-ink: #e6cf8a;
-      --note-bg: #12203a;
-      --note-line: #274a80;
-      --note-ink: #bcd4fa;
-      --term-bg: #05070a;
-      --term-ink: #7be39a;
-      --term-dim: #4c6754;
       --control: #7ea8f5;
       --control-soft: #14233f;
       --turtle: #e3ac54;
       --turtle-soft: #2b2214;
       --grid: rgba(150,180,220,.05);
-      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.4);
     }
   }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
+
   .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
-  .wrap { max-width: 940px; margin: 0 auto; padding: 0 22px 96px; }
-  header.hero { max-width: 940px; margin: 0 auto; padding: 56px 22px 30px; }
-  .eyebrow {
-    display: inline-block; font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; font-weight: 600;
-  }
-  h1 { font-size: 2.35rem; line-height: 1.1; margin: 16px 0 8px; letter-spacing: -.02em; }
   h1 .k { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
   h1 .k.control { color: var(--control); }
   h1 .k.turtle { color: var(--turtle); }
-  .lede { font-size: 1.12rem; color: var(--muted); margin: 0; max-width: 64ch; }
-  .meta-row { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); background: var(--panel); padding: 4px 11px; border-radius: 999px; }
-  .chip b { color: var(--ink); font-weight: 600; }
-
-  /* role legend */
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0 6px; }
   .legend .who {
-    flex: 1 1 240px; display: flex; gap: 12px; align-items: flex-start;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow);
-  }
+      flex: 1 1 240px; display: flex; gap: 12px; align-items: flex-start;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow);
+    }
   .legend .swatch { width: 12px; height: 40px; border-radius: 4px; margin-top: 2px; flex: none; }
   .legend .who.control .swatch { background: var(--control); }
   .legend .who.turtle .swatch { background: var(--turtle); }
@@ -103,51 +48,14 @@
   .legend .who.control h4 { color: var(--control); }
   .legend .who.turtle h4 { color: var(--turtle); }
   .legend .who p { margin: 0; font-size: .88rem; color: var(--muted); }
-
-  nav.toc { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin: 8px 0 40px; box-shadow: var(--shadow); }
-  nav.toc p { margin: 0 0 10px; font-weight: 700; font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  nav.toc ol { margin: 0; padding: 0; list-style: none; counter-reset: toc; columns: 2; column-gap: 32px; }
-  nav.toc li { counter-increment: toc; margin: 0 0 7px; break-inside: avoid; }
-  nav.toc a { color: var(--ink); text-decoration: none; }
-  nav.toc a::before { content: counter(toc) ". "; color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
-  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
-
-  section { margin: 0 0 46px; scroll-margin-top: 20px; }
-  h2 { font-size: 1.5rem; letter-spacing: -.01em; margin: 0 0 4px; padding-top: 14px; border-top: 2px solid var(--line); }
-  h2 .num { display: inline-block; min-width: 1.7em; color: var(--accent); font-variant-numeric: tabular-nums; }
-  h3 { font-size: 1.12rem; margin: 26px 0 6px; }
-  p { margin: 12px 0; }
-  a { color: var(--accent); }
   strong { font-weight: 650; }
-
   ul { padding-left: 1.3em; }
-  li { margin: 6px 0; }
-
-  code {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: .88em; background: var(--code-bg); color: var(--code-ink); padding: 2px 6px; border-radius: 5px;
-  }
   code.control { background: var(--control-soft); color: var(--control); }
   code.turtle { background: var(--turtle-soft); color: var(--turtle); }
-  pre {
-    background: var(--term-bg); color: var(--term-ink); border-radius: 12px; padding: 16px 18px; overflow-x: auto;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: .84rem; line-height: 1.6;
-    box-shadow: var(--shadow); border: 1px solid var(--line);
-  }
-  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
-  pre .cmt { color: var(--term-dim); }
   pre .key { color: #7ea8f5; }
   pre .str { color: #e3ac54; }
-  pre .out { color: #d7dde3; }
-
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .92rem; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  thead th { background: var(--accent-soft); color: var(--ink); font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; }
-  tbody tr:last-child td { border-bottom: none; }
   .scroller { overflow-x: auto; margin: 16px 0; }
   .scroller table { margin: 0; min-width: 640px; }
-
-  /* role + delivery pills */
   .role { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
   .role.control { color: var(--control); background: var(--control-soft); }
   .role.turtle { color: var(--turtle); background: var(--turtle-soft); }
@@ -157,40 +65,25 @@
   .deliv.broadcast { color: var(--turtle); border: 1px dashed var(--turtle); }
   .deliv.directed { color: var(--control); background: var(--control-soft); }
   td .mtype { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 650; }
-
-  .callout { border-radius: 12px; padding: 14px 16px 14px 18px; margin: 18px 0; border-left: 4px solid; font-size: .95rem; }
-  .callout p { margin: 6px 0; }
-  .callout .tag { font-weight: 700; letter-spacing: .04em; font-size: .78rem; text-transform: uppercase; display: block; margin-bottom: 2px; }
-  .note { background: var(--note-bg); border-color: var(--note-line); color: var(--note-ink); }
-  .note .tag { color: var(--note-line); }
-  .warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
-  .warn .tag { color: var(--warn-line); }
-
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
-  .card h3 { margin-top: 0; }
-  .card p { margin: 6px 0 0; font-size: .92rem; color: var(--muted); }
   .card.control { border-top: 3px solid var(--control); }
   .card.turtle { border-top: 3px solid var(--turtle); }
   .card .loop-head { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; color: var(--muted); }
   ol.mini { counter-reset: s; list-style: none; padding: 0; margin: 12px 0 0; }
   ol.mini li { counter-increment: s; position: relative; padding: 3px 0 3px 30px; margin: 8px 0; font-size: .92rem; }
   ol.mini li::before {
-    content: counter(s); position: absolute; left: 0; top: 3px; width: 21px; height: 21px; border-radius: 50%;
-    display: grid; place-items: center; font-size: .74rem; font-weight: 700; color: #fff;
-  }
+      content: counter(s); position: absolute; left: 0; top: 3px; width: 21px; height: 21px; border-radius: 50%;
+      display: grid; place-items: center; font-size: .74rem; font-weight: 700; color: #fff;
+    }
   .card.control ol.mini li::before { background: var(--control); }
   .card.turtle ol.mini li::before { background: var(--turtle); }
-
-  /* strip / coordinate-frame diagram */
   .frame {
-    background:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 22px 22px;
-    background-color: var(--panel);
-    border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 18px; margin: 18px 0; box-shadow: var(--shadow); overflow-x: auto;
-  }
+      background:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 22px 22px;
+      background-color: var(--panel);
+      border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 18px; margin: 18px 0; box-shadow: var(--shadow); overflow-x: auto;
+    }
   .frame .axis { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; color: var(--muted); letter-spacing: .03em; margin-bottom: 12px; }
   .frame .arrowx { color: var(--turtle); }
   .strips { display: flex; gap: 16px; min-width: 520px; }
@@ -203,8 +96,6 @@
   .strip .cmd { margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; background: var(--term-bg); color: var(--term-ink); border-radius: 7px; padding: 6px 9px; }
   .strip .cmd .p { color: #59b6ff; }
   .frame .down { text-align: center; margin-top: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; color: var(--muted); }
-
-  /* sequence timeline */
   .seq { position: relative; margin: 18px 0; padding: 4px 0; }
   .seq::before { content: ""; position: absolute; top: 40px; bottom: 6px; left: 50%; width: 2px; background: var(--line); transform: translateX(-1px); }
   .seq .lanes { display: flex; justify-content: space-between; margin-bottom: 14px; gap: 10px; }
@@ -226,19 +117,13 @@
   .msg.from-control .bubble .mt { color: var(--control); }
   .msg.from-turtle .bubble .mt { color: var(--turtle); }
   .bubble .pl { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; color: var(--muted); margin-top: 1px; }
-  /* control's own internal actions — notes on the spine, not messages */
   .act { position: relative; text-align: center; margin: 9px auto; max-width: 62%; }
   .act span { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; color: var(--control); background: var(--control-soft); border: 1px dashed var(--control); border-radius: 999px; padding: 3px 12px; }
   .act.win span { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
-
-  footer { max-width: 940px; margin: 0 auto; padding: 30px 22px 60px; color: var(--muted); font-size: .88rem; border-top: 1px solid var(--line); }
   footer a { color: var(--accent); }
-  footer code { font-size: .85em; }
 
-  @media (max-width: 680px) {
-    nav.toc ol { columns: 1; }
-    .grid2 { grid-template-columns: 1fr; }
-    h1 { font-size: 1.9rem; }
+  /* same 640px breakpoint as style.css, for this page's own widgets */
+  @media (max-width: 640px) {
     .bubble { max-width: 62%; }
     .seq .lanes { flex-direction: column; }
   }

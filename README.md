@@ -39,7 +39,7 @@ Three principles drive every design decision here:
 | `probe.lua`       | Real-turtle smoke test: a round trip that must close to origin              | ✅ done  |
 | `update.lua`      | Pulls the latest files from GitHub onto an in-game computer/turtle          | ✅ done  |
 | `quarry.lua`      | Quarry pattern generator (single-turtle box clear)                          | ✅ done  |
-| `test_quarry.lua` | 11-scenario suite for `quarry` (coverage, dump, edge cases)                  | ✅ 11/11 |
+| `test_quarry.lua` | 12-scenario suite for `quarry` (coverage, dump, edge cases)                  | ✅ 12/12 |
 | `mine.lua`        | In-game driver: run a quarry on a turtle (`mine <w> <l> <d>`)                | ✅ done  |
 | `branch.lua`      | Branch/strip pattern generator                                              | ⬜ todo  |
 | `tunnel.lua`      | Tunnel pattern generator (single-turtle W×L×H corridor: dump, return, torches, floor-fill) | ✅ done |
@@ -63,6 +63,24 @@ Three principles drive every design decision here:
 | `control.lua` / `setup.lua` | Interactive control station + on-screen job setup (plain terminal) | ✅ done  |
 | `fleet.lua`       | In-game turtle driver (`fleet <x> <y> <z>`)                                 | ✅ done  |
 | `ui.lua`          | Basalt monitor UI (mouse/buttons) — polish over the plain-terminal station  | ⬜ todo  |
+
+---
+
+## Documentation
+
+Illustrated operator guides live in [`docs/`](docs/) — see
+[`docs/README.md`](docs/README.md) for the index, or open `docs/index.html` in
+a browser from a local clone. (These are HTML pages; github.com shows their raw
+source rather than rendering them.)
+
+| Guide | Covers |
+| ----- | ------ |
+| [`docs/control.html`](docs/control.html) | The control station: job wizard, live dashboard, fleet keyboard controls, crash-safe resume. **Start here.** |
+| [`docs/dig.html`](docs/dig.html) | The `dig` program (tunnel pattern): one turtle, a torch-lit W×L×H corridor with floor-fill and Ender Chest dumping. |
+| [`docs/fleet-and-control.html`](docs/fleet-and-control.html) | The `ccfleet` rednet protocol — the six messages and a full run traced end to end. Companion to the control guide. |
+
+Completed build plans are archived in [`docs/plans/`](docs/plans/) for their
+design rationale; they are historical, not current documentation.
 
 ---
 
