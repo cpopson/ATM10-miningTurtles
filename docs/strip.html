@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cc-fleet-miner — The strip Program</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* strip.html — page-specific: reserved-slot roles, the top-down spine/rib map
+     (.td/.cell) and the inventory-slot grid (.slot). Shared palette, typography,
+     tables and callouts come from style.css. */
+  :root {
+    /* the three reserved-slot roles */
+    --chest: #2c62c9;
+    --chest-soft: #e7eefb;
+    --torch: #cf8a2a;
+    --torch-soft: #fbf1e0;
+    --filler: #6b7684;
+    --filler-soft: #eceef1;
+    --ore: #159b76;
+    --ore-soft: #e0f4ee;
+    --grid: rgba(30,50,80,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --chest: #7ea8f5;
+      --chest-soft: #14233f;
+      --torch: #e3ac54;
+      --torch-soft: #2b2214;
+      --filler: #9aa7b4;
+      --filler-soft: #20262e;
+      --ore: #4fd3aa;
+      --ore-soft: #102b24;
+      --grid: rgba(150,180,220,.05);
+    }
+  }
+
+  pre .good { color: #7be39a; }
+  pre .bad { color: #ff9a9a; }
+
+  /* graph-paper diagram frame (overrides the plain frame in style.css) */
+  .diagram {
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 22px 22px; background-color: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin: 16px 0; box-shadow: var(--shadow); overflow-x: auto;
+  }
+  .diagram .cap { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .74rem; color: var(--muted); letter-spacing: .03em; }
+
+  /* top-down map: spine runs left-to-right, ribs run up and down off it */
+  .td { display: inline-grid; grid-template-columns: auto auto; grid-template-rows: auto auto; gap: 10px 12px; min-width: 470px; }
+  .td .ylab { grid-row: 1; grid-column: 1; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; align-self: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .72rem; color: var(--accent); font-weight: 700; letter-spacing: .05em; }
+  .td .cells { grid-row: 1; grid-column: 2; display: grid; grid-template-columns: repeat(10, 40px); grid-auto-rows: 34px; gap: 3px; }
+  .td .xlab { grid-row: 2; grid-column: 2; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .72rem; color: var(--accent); font-weight: 700; letter-spacing: .05em; }
+  .cell { border-radius: 5px; position: relative; display: grid; place-items: center; font-size: .64rem; }
+  .cell.rock { background: var(--filler-soft); border: 1px solid var(--line); }
+  .cell.air { border: 1px dashed var(--line); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+  .cell.spine { border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent-soft) 85%, transparent); }
+  .cell.ore { background: var(--ore-soft); border: 1px solid var(--ore); color: var(--ore); font-weight: 700; }
+  .cell .turtle { width: 26px; height: 22px; border-radius: 5px; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 800; box-shadow: 0 2px 0 rgba(0,0,0,.2); }
+  .cell .torchdot { width: 9px; height: 9px; border-radius: 50%; background: var(--torch); box-shadow: 0 0 8px 2px color-mix(in srgb, var(--torch) 60%, transparent); }
+
+  /* inventory slot grid */
+  .slotwrap { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+  .slots { display: grid; grid-template-columns: repeat(4, 52px); grid-auto-rows: 52px; gap: 6px; }
+  .slot { border-radius: 8px; border: 1px solid var(--line); background: var(--panel); position: relative; display: grid; place-items: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; color: var(--muted); }
+  .slot .n { position: absolute; top: 3px; left: 5px; font-size: .62rem; color: var(--muted); }
+  .slot.loot { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); color: var(--accent); }
+  .slot.chest { background: var(--chest-soft); border-color: var(--chest); color: var(--chest); font-weight: 700; }
+  .slot.torch { background: var(--torch-soft); border-color: var(--torch); color: var(--torch); font-weight: 700; }
+  .slot.filler { background: var(--filler-soft); border-color: var(--filler); color: var(--filler); font-weight: 700; }
+
+  /* map + slot-role legend (page-local: fleet-and-control.html uses .legend differently) */
+  .legend { display: flex; flex-direction: column; gap: 9px; font-size: .9rem; }
+  .legend .row { display: flex; align-items: center; gap: 10px; }
+  .legend .sw { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+  .legend .sw.loot { background: var(--accent-soft); border-color: var(--accent); }
+  .legend .sw.chest { background: var(--chest-soft); border-color: var(--chest); }
+  .legend .sw.torch { background: var(--torch-soft); border-color: var(--torch); }
+  .legend .sw.filler { background: var(--filler-soft); border-color: var(--filler); }
+  .legend .sw.spine { background: color-mix(in srgb, var(--accent-soft) 85%, transparent); border-color: var(--accent); }
+  .legend .sw.air { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); border-style: dashed; }
+  .legend .sw.rock { background: var(--filler-soft); }
+  .legend .sw.ore { background: var(--ore-soft); border-color: var(--ore); }
+  .legend b { font-weight: 650; }
+  .legend small { color: var(--muted); }
+
+  @media (max-width: 640px) {
+    .td { min-width: 0; }
+    .td .cells { grid-template-columns: repeat(10, 30px); grid-auto-rows: 26px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="eyebrow">cc-fleet-miner · branch/strip pattern</span>
+  <h1>The <span class="mono">strip</span> Program</h1>
+  <p class="lede">Send one mining turtle down a spine tunnel that throws off ribs to the left and right at a fixed spacing — the classic strip mine — and have it chase down every ore vein it uncovers along the way.</p>
+  <div class="meta-row">
+    <span class="chip"><b>Command:</b> strip &lt;length&gt; [ribReach] [spacing] [height]</span>
+    <span class="chip"><b>Turtles:</b> 1 (standalone)</span>
+    <span class="chip"><b>Modem:</b> not required</span>
+    <span class="chip"><b>Pattern:</b> branch.lua</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#what">What strip does</a></li>
+      <li><a href="#need">What you need</a></li>
+      <li><a href="#code">Get the code in-game</a></li>
+      <li><a href="#geometry">Geometry (place it right)</a></li>
+      <li><a href="#slots">Load the turtle</a></li>
+      <li><a href="#run">Run it</a></li>
+      <li><a href="#output">Reading the output</a></li>
+      <li><a href="#tuning">Tuning (config.lua)</a></li>
+      <li><a href="#troubleshoot">Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <section id="what">
+    <h2><span class="num">1</span>What <code>strip</code> does</h2>
+    <p><code>strip</code> is the single-turtle driver for the <strong>branch/strip pattern</strong>. Where <code>dig</code> clears one straight box, <code>strip</code> cuts a long <em>spine</em> and hangs <em>ribs</em> off both sides of it — far more ore exposed per block dug. It does four jobs:</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Cuts the spine</h3>
+        <p>A 1-wide corridor running forward for <em>length</em> cells, the trunk everything else hangs off.</p>
+      </div>
+      <div class="card">
+        <h3>Cuts paired ribs</h3>
+        <p>At every multiple of <em>spacing</em> it turns off and cuts a rib <strong>right</strong> and a rib <strong>left</strong>, each reaching <em>ribReach</em> blocks out, then rejoins the spine.</p>
+      </div>
+      <div class="card">
+        <h3>Follows ore veins</h3>
+        <p>Every face it exposes gets checked. Find an ore block and it leaves the corridor, mines the whole connected vein, and comes back to the exact block it left from.</p>
+      </div>
+      <div class="card">
+        <h3>Lights, patches &amp; returns</h3>
+        <p>Torches along the spine, filler over floor gaps, loot streamed into an Ender Chest — then home to the mouth facing its original direction.</p>
+      </div>
+    </div>
+    <div class="callout note">
+      <span class="tag">Standalone — no fleet needed</span>
+      <p><code>strip</code> is one turtle doing one job; it doesn't use rednet or the control station at all. (The branch pattern isn't wired into the fleet yet — that's a later step. For multi-turtle box clears, use <code>mine</code> / the control station.)</p>
+    </div>
+  </section>
+
+  <section id="need">
+    <h2><span class="num">2</span>What you need</h2>
+    <table>
+      <thead><tr><th>Item</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1× Mining Turtle</strong></td><td>Any Mining Turtle. An <strong>Advanced</strong> one gives coloured output. No modem required.</td></tr>
+        <tr><td><strong>Plenty of fuel</strong></td><td>Coal / charcoal in a slot, then <code>refuel all</code>. A strip mine covers far more ground than a tunnel, and vein chasing adds more on top — <code>strip</code> prints its estimate and tops up automatically if it can.</td></tr>
+        <tr><td><strong>Ender Chest</strong> <em>(strongly recommended)</em></td><td>One in <strong>slot 16</strong>. Vein following fills an inventory fast; without a chest the overflow drops on the ground.</td></tr>
+        <tr><td><strong>Torches</strong> <em>(optional)</em></td><td>A stack in <strong>slot 15</strong> to light the spine as it goes.</td></tr>
+        <tr><td><strong>Filler blocks</strong> <em>(optional)</em></td><td>Cobblestone (or any cheap block) in <strong>slot 14</strong> to bridge gaps in the floor.</td></tr>
+      </tbody>
+    </table>
+    <p>Everything optional only engages if it's actually stocked — an empty slot just means that feature is skipped, and <code>strip</code> tells you which ones are on before it starts.</p>
+  </section>
+
+  <section id="code">
+    <h2><span class="num">3</span>Get the code in-game</h2>
+    <p>The turtle needs the project files. Bootstrap once with <code>update.lua</code>, then re-run <code>update</code> after any change.</p>
+    <ol class="steps">
+      <li>On a fresh turtle, pull the updater once:
+        <pre><code><span class="prompt">&gt;</span> wget https://raw.githubusercontent.com/cpopson/ATM10-miningTurtles/master/update.lua update.lua
+<span class="prompt">&gt;</span> update</code></pre>
+      </li>
+      <li>After every push to GitHub, just run <code>update</code> again.</li>
+    </ol>
+  </section>
+
+  <section id="geometry">
+    <h2><span class="num">4</span>Geometry — place it right</h2>
+    <p>Everything is measured relative to <strong>how the turtle faces</strong> when you start it. The turtle stands <em>in</em> the spine mouth — its own block is never dug — and the mine grows:</p>
+    <table>
+      <thead><tr><th>Dimension</th><th>Direction</th></tr></thead>
+      <tbody>
+        <tr><td><strong>length</strong> (1st number)</td><td><strong>Forward</strong> — the way the turtle is facing. Counted in cells <em>including</em> the mouth it starts on.</td></tr>
+        <tr><td><strong>ribReach</strong> (2nd number)</td><td>How far each rib runs <strong>out from the spine</strong> — the same distance to the <strong>left</strong> and to the <strong>right</strong>.</td></tr>
+        <tr><td><strong>spacing</strong> (3rd number)</td><td>Spine cells between one rib pair and the next. A pair sits at every multiple of this, starting at <code>spacing</code> itself (never at the mouth).</td></tr>
+        <tr><td><strong>height</strong> (4th number)</td><td>Straight <strong>up</strong>, for the spine and every rib alike.</td></tr>
+      </tbody>
+    </table>
+    <div class="diagram" aria-label="Top-down map of a strip mine: the turtle sits at the left end of a spine corridor running right, with ribs branching up and down at every third cell, and an ore vein beside one rib tip.">
+      <p class="cap" style="margin:0 0 12px;">top-down view · <span class="mono">strip 10 2 3</span> — spine 10 long, ribs reaching 2 each side, every 3 cells</p>
+      <div class="td">
+        <div class="ylab">← left · right →</div>
+        <div class="cells">
+          <!-- w = -2 -->
+          <div class="cell rock"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div>
+          <!-- w = -1 -->
+          <div class="cell rock"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div>
+          <!-- w = 0 : the spine -->
+          <div class="cell spine"><span class="turtle">▸</span></div><div class="cell spine"></div><div class="cell spine"></div>
+          <div class="cell spine"></div><div class="cell spine"></div><div class="cell spine"></div>
+          <div class="cell spine"><span class="torchdot"></span></div><div class="cell spine"></div><div class="cell spine"></div>
+          <div class="cell spine"></div>
+          <!-- w = +1 -->
+          <div class="cell rock"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div>
+          <!-- w = +2 -->
+          <div class="cell rock"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell rock"></div><div class="cell rock"></div>
+          <div class="cell air"></div><div class="cell ore">ore</div><div class="cell ore">ore</div>
+          <div class="cell air"></div>
+        </div>
+        <div class="xlab">length (forward) →</div>
+      </div>
+    </div>
+    <div class="legend" style="margin-top:6px;">
+      <div class="row"><span class="sw spine"></span><span><b>Spine.</b> <small>The trunk corridor; the turtle <span style="color:var(--accent);font-weight:700;">▸</span> starts and ends on its first cell.</small></span></div>
+      <div class="row"><span class="sw air"></span><span><b>Ribs.</b> <small>Cut left and right at cells 3, 6 and 9 — every multiple of <code>spacing</code>.</small></span></div>
+      <div class="row"><span class="sw rock"></span><span><b>Untouched stone.</b> <small>The 2-block wall left between ribs.</small></span></div>
+      <div class="row"><span class="sw ore"></span><span><b>An exposed vein.</b> <small>Touching a rib, so the turtle detours, mines it out, and resumes.</small></span></div>
+      <div class="row"><span class="sw torch"></span><span><b>A torch.</b> <small>Placed on the spine floor every <code>torchEvery</code> blocks.</small></span></div>
+    </div>
+    <div class="callout note">
+      <span class="tag">Why spacing 3?</span>
+      <p>Ribs 3 apart leave a 2-block wall between them, and <em>every block of that wall touches a rib</em> — so no vein can hide in it. Tighter spacing digs more stone for the same ore; wider spacing starts missing veins. 3 is the classic ratio, and it's the default.</p>
+    </div>
+    <div class="callout note">
+      <span class="tag">Defaults</span>
+      <p>Give just a length and you get <strong>8-block ribs every 3 cells, 2 tall</strong>, using <code>ribReach</code> and <code>ribSpacing</code> from <code>config.lua</code>. Pass <code>0</code> for <code>ribReach</code> to get a plain vein-following tunnel with no ribs at all.</p>
+    </div>
+  </section>
+
+  <section id="slots">
+    <h2><span class="num">5</span>Load the turtle</h2>
+    <p>Three slots at the <strong>bottom-right</strong> of the inventory are reserved; everything else (slots 1–13) is free for mined loot. Load only the features you want — leave a slot empty to skip it.</p>
+    <div class="diagram">
+      <p class="cap" style="margin:0 0 14px;">turtle inventory — reserved slots highlighted</p>
+      <div class="slotwrap">
+        <div class="slots">
+          <div class="slot loot"><span class="n">1</span></div>
+          <div class="slot loot"><span class="n">2</span></div>
+          <div class="slot loot"><span class="n">3</span></div>
+          <div class="slot loot"><span class="n">4</span></div>
+          <div class="slot loot"><span class="n">5</span></div>
+          <div class="slot loot"><span class="n">6</span></div>
+          <div class="slot loot"><span class="n">7</span></div>
+          <div class="slot loot"><span class="n">8</span></div>
+          <div class="slot loot"><span class="n">9</span></div>
+          <div class="slot loot"><span class="n">10</span></div>
+          <div class="slot loot"><span class="n">11</span></div>
+          <div class="slot loot"><span class="n">12</span></div>
+          <div class="slot loot"><span class="n">13</span></div>
+          <div class="slot filler"><span class="n">14</span>fill</div>
+          <div class="slot torch"><span class="n">15</span>torch</div>
+          <div class="slot chest"><span class="n">16</span>ender</div>
+        </div>
+        <div class="legend">
+          <div class="row"><span class="sw chest"></span><span><b>Slot 16 — Ender Chest.</b> <small>Auto-dumps loot in place, even mid-vein.</small></span></div>
+          <div class="row"><span class="sw torch"></span><span><b>Slot 15 — Torches.</b> <small>One on the spine floor every few blocks (height ≥ 2).</small></span></div>
+          <div class="row"><span class="sw filler"></span><span><b>Slot 14 — Filler.</b> <small>Cobble to patch gaps in the floor, including holes a vein leaves behind.</small></span></div>
+          <div class="row"><span class="sw loot"></span><span><b>Slots 1–13 — Loot.</b> <small>Mined blocks collect here.</small></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="tag">Bring an Ender Chest</span>
+      <p>Vein following means the turtle mines far more than the corridor itself. Without a chest in slot 16 a long run <em>will</em> overflow and start dropping ore on the ground. Torches need headroom too — a <code>height 1</code> mine skips them entirely.</p>
+    </div>
+  </section>
+
+  <section id="run">
+    <h2><span class="num">6</span>Run it</h2>
+    <ol class="steps">
+      <li>Place the turtle <strong>in the spine mouth, facing the direction you want the spine to run</strong>.</li>
+      <li>Load fuel and any optional slots (section 5), then <code>refuel all</code>.</li>
+      <li>Run <code>strip</code> with a length, and optionally rib reach, spacing and height:
+        <pre><code><span class="prompt">&gt;</span> strip &lt;length&gt; [ribReach] [spacing] [height]</code></pre>
+      </li>
+    </ol>
+    <p>A typical lit, floor-patched strip mine with a 40-long spine:</p>
+    <pre><code><span class="prompt">&gt;</span> strip 40
+<span class="out">Ender Chest in slot 16 - will auto-dump loot when full.
+Torches in slot 15 - one on the spine every 8 blocks.
+Filler in slot 14 - floor gaps will be patched.
+Vein following ON (sides, max 64 blocks per vein).
+  Side scanning roughly triples wall-clock time (fuel cost is unchanged).
+  Set veinScan = "vertical" in config.lua to speed it up.
+Strip mining: spine 40 long, 13 rib pair(s) every 3, reaching 8 each side, 2 tall...</span>
+<span class="good">DONE: 521 cells, 26 ribs, 63 ore from 14 veins (4 torches, 31 fills, 3 dumps), back at start.</span></code></pre>
+    <table>
+      <thead><tr><th>Example</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td><code>strip 40</code></td><td>Spine 40 long, 8-block ribs every 3 cells, 2 tall. The default strip mine.</td></tr>
+        <tr><td><code>strip 60 12 4</code></td><td>A bigger field: 12-block ribs every 4 cells off a 60-long spine.</td></tr>
+        <tr><td><code>strip 30 6 3 3</code></td><td>Same layout, 3 tall — more headroom, ~50% more digging.</td></tr>
+        <tr><td><code>strip 24 0</code></td><td>No ribs: a plain 24-long tunnel that still chases every vein it exposes.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="output">
+    <h2><span class="num">7</span>Reading the output</h2>
+    <p>Before it starts, <code>strip</code> prints one line per optional feature so you can confirm what's on. When it finishes it prints one of two lines:</p>
+    <h3>Success</h3>
+    <pre><code><span class="good">DONE: 521 cells, 26 ribs, 63 ore from 14 veins (4 torches, 31 fills, 3 dumps), back at start.</span></code></pre>
+    <ul>
+      <li><strong>cells</strong> — corridor blocks the turtle moved through (spine plus every rib). Vein detours are <em>not</em> counted here.</li>
+      <li><strong>ribs</strong> — individual ribs finished, so a full run is twice the pair count.</li>
+      <li><strong>ore / veins</strong> — ore blocks mined off-corridor, and how many separate veins they came from.</li>
+      <li><strong>torches / fills / dumps</strong> — torches placed, floor gaps patched, and loot dumps made.</li>
+      <li><strong>back at start</strong> — it returned to the mouth block, facing its original heading.</li>
+    </ul>
+    <p>Two extra lines appear only when they apply:</p>
+    <pre><code><span class="out">  2 vein(s) hit the 64-block cap - raise maxVein in config.lua to finish them.
+  5 vein(s) skipped to conserve fuel.</span></code></pre>
+    <h3>Aborted</h3>
+    <pre><code><span class="bad">ABORTED (no_fuel) after 188 cells, 8 ribs, 24 ore.</span>
+<span class="out">  stopped at (6,0,-14) h=0 relative to start.</span></code></pre>
+    <p>It stops cleanly and tells you where. Common reasons:</p>
+    <table>
+      <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>no_fuel</code></td><td>Ran out of fuel. Refuel and re-run (it re-cuts from the mouth; already-dug cells cost only a move).</td></tr>
+        <tr><td><code>blocked_unbreakable</code></td><td>Hit bedrock or another unbreakable block in the spine or a rib.</td></tr>
+        <tr><td><code>blocked_retry_exceeded</code></td><td>Something kept refilling the space (falling gravel/sand past the retry budget).</td></tr>
+        <tr><td><code>dump_place_failed</code></td><td>Couldn't place the Ender Chest to dump (obstruction above). Rare.</td></tr>
+        <tr><td><code>aborted</code></td><td>Something asked it to stop. Only happens under fleet control, not from <code>strip</code>.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout warn">
+      <span class="tag">pose lost mid-vein</span>
+      <p>If the abort line is followed by <em>"WARNING: pose lost mid-vein"</em>, the turtle ran dry <em>while walking back out of a vein</em>, so it is somewhere off the corridor rather than on it. The <code>stopped at</code> coordinates are still correct — go fetch it before re-running.</p>
+    </div>
+  </section>
+
+  <section id="tuning">
+    <h2><span class="num">8</span>Tuning (<code>config.lua</code>)</h2>
+    <p>The rib layout, vein behaviour and reserved slots all live in <code>config.lua</code>. Change a value, run <code>update</code>, and it takes effect.</p>
+    <table>
+      <thead><tr><th>Key</th><th>Default</th><th>Controls</th></tr></thead>
+      <tbody>
+        <tr><td><code>ribReach</code></td><td><code>8</code></td><td>How far each rib runs out from the spine, per side.</td></tr>
+        <tr><td><code>ribSpacing</code></td><td><code>3</code></td><td>Spine cells between rib pairs.</td></tr>
+        <tr><td><code>veinFollow</code></td><td><code>true</code></td><td>Master switch for chasing exposed ore.</td></tr>
+        <tr><td><code>veinScan</code></td><td><code>"sides"</code></td><td>Which faces get checked — see the table below.</td></tr>
+        <tr><td><code>maxVein</code></td><td><code>64</code></td><td>Most ore blocks mined from any one vein, so a huge deposit can't swallow the run.</td></tr>
+        <tr><td><code>chestSlot</code></td><td><code>16</code></td><td>Slot the Ender Chest lives in.</td></tr>
+        <tr><td><code>torchSlot</code></td><td><code>15</code></td><td>Slot the torches live in.</td></tr>
+        <tr><td><code>fillerSlot</code></td><td><code>14</code></td><td>Slot the filler blocks live in.</td></tr>
+        <tr><td><code>torchEvery</code></td><td><code>8</code></td><td>Blocks between torches along the spine.</td></tr>
+      </tbody>
+    </table>
+    <h3>Choosing a <code>veinScan</code></h3>
+    <table>
+      <thead><tr><th>Value</th><th>Faces checked</th><th>Cost</th></tr></thead>
+      <tbody>
+        <tr><td><code>"sides"</code></td><td>Floor, ceiling and <strong>both walls</strong> — complete coverage; nothing the dig exposes is missed.</td><td>~3× the wall-clock time of a blind dig.</td></tr>
+        <tr><td><code>"vertical"</code></td><td>Floor and ceiling only.</td><td>No overhead at all.</td></tr>
+        <tr><td><code>"none"</code></td><td>Nothing — ribs are cut blind.</td><td>No overhead at all.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout note">
+      <span class="tag">Turning is free</span>
+      <p>Checking the walls means turning, and <strong>turning costs no fuel</strong> — only time. So <code>veinScan</code> trades wall-clock minutes, never range: a <code>"sides"</code> run and a <code>"none"</code> run of the same size need the same fuel for their corridors.</p>
+    </div>
+    <div class="callout note">
+      <span class="tag">Keep the slots contiguous</span>
+      <p>The reserved slots sit at the top of the inventory so the loot region below them stays contiguous. If you move one, keep the trio together (e.g. 16/15/14) so loot never spills into a reserved slot.</p>
+    </div>
+  </section>
+
+  <section id="troubleshoot">
+    <h2><span class="num">9</span>Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><em>"usage: strip …"</em> and nothing runs</td><td>You didn't give a length. The first number is required: <code>strip 40</code>.</td></tr>
+        <tr><td><em>"Low fuel…"</em> and it stops</td><td>Add coal/charcoal and <code>refuel all</code>. The estimate includes a vein-following allowance, so it asks for noticeably more than <code>dig</code> would.</td></tr>
+        <tr><td>It's crawling</td><td><code>veinScan = "sides"</code> turns four times per block. Set it to <code>"vertical"</code> for a big speed-up at the cost of wall veins.</td></tr>
+        <tr><td>Ore is being walked past</td><td>Either <code>veinFollow</code> is off / <code>veinScan</code> is <code>"none"</code>, or fuel dropped below the vein reserve (look for <em>"skipped to conserve fuel"</em>). A modded ore with an unusual name and no ore tag can also be missed — pass your own <code>oreMatch</code> if so.</td></tr>
+        <tr><td>No ribs were cut</td><td><code>spacing</code> is larger than <code>length - 1</code>, so no rib position fits. <code>strip</code> warns about this and cuts a plain tunnel instead.</td></tr>
+        <tr><td>Ribs merged into one big room</td><td><code>spacing 1</code> puts a rib pair on <em>every</em> spine cell, leaving no wall between them — that's an excavation, not a strip mine. Use 3 (<code>strip</code> warns when you pass 1).</td></tr>
+        <tr><td>Mine is dark</td><td>No torches in slot 15, or <code>height 1</code>. Stock slot 15 and use height ≥ 2. (Ribs are unlit by design — only the spine gets torches.)</td></tr>
+        <tr><td>Loot dropped on the ground</td><td>No Ender Chest in slot 16. With vein following on, this fills up fast — add one.</td></tr>
+        <tr><td>Turtle stopped partway</td><td>Read the <code>ABORTED (reason)</code> line (section 7). Usually fuel or an unbreakable block.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+<footer>
+  <p><strong>cc-fleet-miner</strong> — the <code>strip</code> (branch) program. Files: <code>strip.lua</code> (driver), <code>branch.lua</code> (pattern), <code>tunnel.lua</code> (composed for the spine and every rib), <code>nav.lua</code>, <code>config.lua</code>. See <code>README.md</code> for the module map, <code>docs/dig.html</code> for the single-corridor program, and <code>docs/control.html</code> for the multi-turtle control station.</p>
+</footer>
+
+</body>
+</html>

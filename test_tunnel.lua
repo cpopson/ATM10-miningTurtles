@@ -371,6 +371,87 @@ local function s15_onprogress_abort()
 end
 
 --------------------------------------------------------------------------------
+-- 16. onProgress may move the turtle if it restores the pose (branch.lua's
+--     vein-excursion contract). The sweep keeps no cursor, so an excursion that
+--     returns to the exact pose is invisible to it.
+--------------------------------------------------------------------------------
+local function s16_onprogress_excursion_preserves_sweep()
+  local start = { x = 0, y = 1, z = 0, h = 0 }
+  local m, nav = setup(start)
+  fillCorridor(m, start, 1, 5, 2)
+  -- One stone block one cell RIGHT of corridor cell l=2, u=0 (outside the box).
+  local ox, oy, oz = worldOf(start, 2, 1, 0)
+  m:_setBlock(ox, oy, oz, "minecraft:stone")
+
+  local calls = 0
+  local success, stats = Tunnel.new(nav, {
+    onProgress = function()
+      calls = calls + 1
+      local p = nav:getPose()
+      local tx, ty, tz = worldOf(start, 2, 0, 0)
+      if p.x == tx and p.y == ty and p.z == tz then
+        local h = p.h
+        nav:turnTo((h + 1) % 4)
+        nav:forward()             -- off-corridor (auto-digs the stone)
+        nav:turnTo((h + 3) % 4)
+        nav:forward()             -- back in; never nav:back()
+        nav:turnTo(h)             -- restore heading
+      end
+      return true
+    end,
+  }):run({ width = 1, length = 5, depth = 2 })
+
+  eq(success, true, "s16: run succeeds despite the excursion")
+  eq(stats.cellsCleared, 9, "s16: cellsCleared unchanged from s03 (excursion adds no cells)")
+  eq(calls, 9, "s16: hook called once per corridor move")
+  assertCorridorCleared(m, start, 1, 5, 2, "s16")
+  eq(m:_wasDug(ox, oy, oz), true, "s16: the off-corridor block was dug by the excursion")
+  poseEq(nav, m, 0, 1, 0, 0, "s16: closed loop")
+end
+
+--------------------------------------------------------------------------------
+-- 17. a whole nested Tunnel:run from inside onProgress — branch.lua's rib
+--     mechanism, proven in isolation.
+--------------------------------------------------------------------------------
+local function s17_nested_run_from_onprogress()
+  local start = { x = 0, y = 1, z = 0, h = 0 }
+  local m, nav = setup(start)
+  fillCorridor(m, start, 1, 5, 2)
+  -- Solid stone in the two cells LEFT of corridor cell l=2, u=0.
+  for w = -1, -2, -1 do
+    local sx, sy, sz = worldOf(start, 2, w, 0)
+    m:_setBlock(sx, sy, sz, "minecraft:stone")
+  end
+
+  local fired = 0
+  local success, stats = Tunnel.new(nav, {
+    onProgress = function()
+      local p = nav:getPose()
+      local tx, ty, tz = worldOf(start, 2, 0, 0)
+      if p.x == tx and p.y == ty and p.z == tz and fired == 0 then
+        fired = 1
+        local h = p.h
+        nav:turnTo((h + 3) % 4)   -- face left
+        Tunnel.new(nav):run({ width = 1, length = 3, depth = 1 })
+        nav:turnTo(h)
+      end
+      return true
+    end,
+  }):run({ width = 1, length = 5, depth = 2 })
+
+  eq(success, true, "s17: outer run succeeds around the nested run")
+  eq(stats.cellsCleared, 9, "s17: outer cellsCleared unaffected by the nested run")
+  eq(fired, 1, "s17: the nested run fired exactly once")
+  assertCorridorCleared(m, start, 1, 5, 2, "s17")
+  for w = -1, -2, -1 do
+    local sx, sy, sz = worldOf(start, 2, w, 0)
+    ok(m:_wasDug(sx, sy, sz) and m:_blockAt(sx, sy, sz) == nil,
+      "s17: nested corridor cell w=" .. w .. " dug and now air")
+  end
+  poseEq(nav, m, 0, 1, 0, 0, "s17: closed loop")
+end
+
+--------------------------------------------------------------------------------
 
 local scenarios = {
   s01_full_coverage_3x3x2,
@@ -388,6 +469,8 @@ local scenarios = {
   s13_torch_intervals_and_survive_return,
   s14_H1_skips_torches,
   s15_onprogress_abort,
+  s16_onprogress_excursion_preserves_sweep,
+  s17_nested_run_from_onprogress,
 }
 
 local scPassed, scFailed = 0, 0

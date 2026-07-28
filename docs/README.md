@@ -10,6 +10,7 @@ browser from a local clone (github.com shows the raw source, not the page).
 | ----- | ------ | ------------ |
 | [control.html](control.html) | The `control.lua` station: job wizard, live dashboard, fleet keyboard controls, crash-safe resume. | You want to run 2–5 turtles on a quarry from one computer + monitor. |
 | [dig.html](dig.html) | The `dig` program (the `tunnel.lua` pattern): a straight W×L×H corridor, torch-lit, floor patched over caves and lava, loot streamed to an Ender Chest. | You want one standalone turtle to cut a corridor. No modem needed. |
+| [strip.html](strip.html) | The `strip` program (the `branch.lua` pattern): a spine corridor with paired ribs at a fixed spacing, plus ore-vein following. | You want one standalone turtle to run a strip mine that also chases the ore it uncovers. |
 | [fleet-and-control.html](fleet-and-control.html) | The `ccfleet` rednet protocol: the six message types, who sends what, and a full run traced message by message. | You're changing `comms.lua`, `coordinator.lua`, or `worker.lua`, or debugging a fleet that won't start. |
 
 Start with **control.html** if you're new — it's the operator guide.
@@ -23,6 +24,9 @@ and its tests are the source of truth.
 
 - [plans/quarry-plan.md](plans/quarry-plan.md) — how `quarry.lua` was designed
   and built (box geometry, the layer-flip rule, the return path).
+- [plans/branch-plan.md](plans/branch-plan.md) — how `branch.lua` was designed
+  and built (why ribs are cut mid-sweep, the vein DFS, the `onProgress`
+  excursion contract it leans on).
 
 ## Adding a guide
 

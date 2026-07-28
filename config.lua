@@ -37,6 +37,23 @@ return {
   fillerSlot = 14,
   torchEvery = 8,
 
+  -- Branch/strip (`strip`) pattern. Ribs run BOTH ways off the spine every
+  -- `ribSpacing` cells, reaching `ribReach` blocks each side (spacing 3 leaves a
+  -- 2-block wall between ribs — the classic strip-mine ratio, where every block
+  -- of that wall is adjacent to a rib). Vein following mines any ore the dig
+  -- exposes, up to `maxVein` blocks per vein.
+  ribReach = 8,
+  ribSpacing = 3,
+  veinFollow = true,
+  maxVein = 64,
+
+  -- How much of each cell's surroundings to check for ore. "sides" scans floor,
+  -- ceiling and both walls (complete, but ~3x the wall-clock time because of the
+  -- turning); "vertical" scans floor and ceiling only (no turning at all);
+  -- "none" disables vein following. Turning costs NO fuel, so this trades only
+  -- time, never range.
+  veinScan = "sides",
+
   -- Coordinator: reassignment attempts before a strip is marked permanently
   -- failed (so a hopeless job can't stall completion forever).
   maxAttempts = 3,

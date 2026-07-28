@@ -41,10 +41,12 @@ Three principles drive every design decision here:
 | `quarry.lua`      | Quarry pattern generator (single-turtle box clear)                          | ✅ done  |
 | `test_quarry.lua` | 12-scenario suite for `quarry` (coverage, dump, edge cases)                  | ✅ 12/12 |
 | `mine.lua`        | In-game driver: run a quarry on a turtle (`mine <w> <l> <d>`)                | ✅ done  |
-| `branch.lua`      | Branch/strip pattern generator                                              | ⬜ todo  |
 | `tunnel.lua`      | Tunnel pattern generator (single-turtle W×L×H corridor: dump, return, torches, floor-fill) | ✅ done |
-| `test_tunnel.lua` | 15-scenario suite for `tunnel` (coverage, torches, fill, dump, edges)        | ✅ 15/15 |
+| `test_tunnel.lua` | 17-scenario suite for `tunnel` (coverage, torches, fill, dump, edges, the `onProgress` excursion contract) | ✅ 17/17 |
 | `dig.lua`         | In-game driver: run a tunnel on a turtle (`dig <length> [width] [height]`)   | ✅ done  |
+| `branch.lua`      | Branch/strip pattern generator (spine + paired ribs + ore-vein following; composes `tunnel`) | ✅ done |
+| `test_branch.lua` | 24-scenario suite for `branch` (rib geometry, vein extraction, pose restoration, edges) | ✅ 24/24 |
+| `strip.lua`       | In-game driver: run a branch mine (`strip <length> [ribReach] [spacing] [height]`) | ✅ done  |
 | `comms.lua`       | rednet messaging protocol (shared by control + turtles); injectable transport | ✅ done |
 | `rednet_transport.lua` | Real rednet/os adapter for `comms` (the only file touching `rednet`)    | ✅ done  |
 | `mockbus.lua`     | In-memory deterministic message bus for testing `comms`                     | ✅ done  |
@@ -77,6 +79,7 @@ source rather than rendering them.)
 | ----- | ------ |
 | [`docs/control.html`](docs/control.html) | The control station: job wizard, live dashboard, fleet keyboard controls, crash-safe resume. **Start here.** |
 | [`docs/dig.html`](docs/dig.html) | The `dig` program (tunnel pattern): one turtle, a torch-lit W×L×H corridor with floor-fill and Ender Chest dumping. |
+| [`docs/strip.html`](docs/strip.html) | The `strip` program (branch pattern): one turtle, a spine with paired ribs, plus ore-vein following. |
 | [`docs/fleet-and-control.html`](docs/fleet-and-control.html) | The `ccfleet` rednet protocol — the six messages and a full run traced end to end. Companion to the control guide. |
 
 Completed build plans are archived in [`docs/plans/`](docs/plans/) for their
@@ -210,6 +213,53 @@ to the mouth, facing its original heading, when finished.
 
 Slots, spacing, and the ender slot live in `config.lua` (`torchSlot`,
 `fillerSlot`, `torchEvery`, `chestSlot`).
+
+---
+
+## Run a branch mine
+
+Cut a spine with ribs off both sides using **`strip.lua`** — a thin in-game
+driver around the tested `branch.lua` module. Where `dig` clears one box,
+`strip` exposes far more stone per block dug, and it mines the ore it finds.
+
+1. Place the turtle **in the spine mouth**, facing the direction you want the
+   spine to run. Its own cell is the start of the spine and is never dug.
+2. Fuel it (`refuel all`) and `update` to pull the latest files.
+3. Run:
+   ```
+   strip <length> [ribReach] [spacing] [height]
+   ```
+   e.g. `strip 40` cuts a 40-long spine with 8-block ribs every 3 cells, 2 tall;
+   `strip 60 12 4 3` cuts 12-block ribs every 4 cells, 3 tall. It prints
+   `DONE: N cells, R ribs, O ore from V veins (...), back at start`, or
+   `ABORTED (reason)` on bedrock / low fuel.
+
+**Geometry** — relative to how the turtle faces, the spine runs **forward** for
+`length` cells. At every multiple of `spacing` the turtle cuts a rib pair —
+one **right**, one **left** — each reaching `ribReach` blocks out, `height`
+tall. Spacing 3 leaves a 2-block wall between ribs, and every block of that wall
+touches a rib, so no vein can hide in it. Pass `ribReach` 0 for a plain
+vein-following tunnel. The turtle returns to the mouth, facing its original
+heading, when finished.
+
+**Ore-vein following** — as it digs, the turtle inspects the faces it exposes.
+Any block matching `oreMatch` (tag `c:ores` and friends, with a loose name
+fallback for modded ores) triggers a detour: it mines the whole connected vein
+depth-first, up to `maxVein` blocks, then returns to the exact cell and heading
+it left from and carries on. `veinScan` picks how much to check —
+`"sides"` (floor, ceiling, both walls), `"vertical"` (floor and ceiling only) or
+`"none"`. **Turning costs no fuel**, so this trades wall-clock time only: a
+`"sides"` run needs the same fuel as a blind one, it just takes roughly 3× as
+long.
+
+**Optional reserved slots** are the same trio as `dig` — **16** Ender Chest
+(strongly recommended here; vein following fills an inventory fast, and it
+dumps mid-vein), **15** Torches (spine only, needs height ≥ 2), **14** Filler
+(also re-patches the floor after a vein breaks through it).
+
+Rib layout, vein behaviour, and slots live in `config.lua` (`ribReach`,
+`ribSpacing`, `veinFollow`, `veinScan`, `maxVein`, plus the `dig` keys). Full
+guide: [`docs/strip.html`](docs/strip.html).
 
 ---
 
@@ -372,9 +422,9 @@ communication over a single named protocol.
 3. ✅ Comms protocol (`comms` + `rednet_transport` + `mockbus` + `test_comms` 9/9)
 4. ✅ Coordinator: partition + assign + track + reassign (`test_coordinator` 21/21, `test_fleet` 3/3)
 5. ✅ Control station: multi-box queue, live Pause/Resume/Stop/Return, on-screen job setup, reboot persistence (`store` + `jobspec`)
-6. ✅ Tunnel pattern (single-turtle W×L×H corridor + torches + floor-fill) — `tunnel` + `test_tunnel` 15/15 + `dig` driver
-7. ⬜ Branch/strip pattern (+ tests) ← **next**
-8. ⬜ Fleet-integrate the tunnel pattern (pattern-aware jobspec/partition/worker so `control` runs parallel tunnels)
+6. ✅ Tunnel pattern (single-turtle W×L×H corridor + torches + floor-fill) — `tunnel` + `test_tunnel` 17/17 + `dig` driver
+7. ✅ Branch/strip pattern (spine + paired ribs + ore-vein following) — `branch` + `test_branch` 24/24 + `strip` driver
+8. ⬜ Fleet-integrate the tunnel and branch patterns (pattern-aware jobspec/partition/worker so `control` runs parallel corridors and alternating ribs) ← **next**
 9. ⬜ Basalt UI (mouse/buttons) over the plain-terminal station
 10. ⬜ Turtle-side progress persistence (resume a strip mid-way, not from the top)
 11. ⬜ Advanced Peripherals integration (Geo Scanner ore-seeking, ME/RS auto-dump)

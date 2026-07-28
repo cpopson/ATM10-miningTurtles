@@ -58,6 +58,13 @@
         <p class="when"><b>Read it when</b> you want one standalone turtle to cut a corridor. No modem required.</p>
       </a>
 
+      <a class="doc" href="strip.html">
+        <h3>The strip Program</h3>
+        <span class="file">strip.html</span>
+        <p>Send one turtle down a spine tunnel that throws off ribs left and right at a fixed spacing — the classic strip mine — chasing down every ore vein it uncovers along the way.</p>
+        <p class="when"><b>Read it when</b> you want one standalone turtle to run a strip mine that also mines the ore it exposes.</p>
+      </a>
+
       <a class="doc" href="fleet-and-control.html">
         <h3>How fleet talks to control</h3>
         <span class="file">fleet-and-control.html</span>
@@ -78,6 +85,7 @@
     <p><code>plans/</code> holds completed build plans, kept for their design rationale. They describe work that is already finished and are <strong>not</strong> current documentation — the code and its tests are the source of truth.</p>
     <ul class="plans">
       <li><a href="plans/quarry-plan.md">plans/quarry-plan.md</a> — how <code>quarry.lua</code> was designed and built: box geometry, the layer-flip rule, and the return path.</li>
+      <li><a href="plans/branch-plan.md">plans/branch-plan.md</a> — how <code>branch.lua</code> was designed and built: why ribs are cut mid-sweep, the vein depth-first search, and the <code>onProgress</code> excursion contract it leans on.</li>
     </ul>
   </section>
 

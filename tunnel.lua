@@ -25,6 +25,13 @@
 --
 -- Heading convention: 0=N(-Z) 1=E(+X) 2=S(+Z) 3=W(-X). We steer with
 -- nav:turnTo(absoluteHeading), never raw deltas.
+--
+-- onProgress CONTRACT (branch.lua depends on this):
+--   The hook MAY move the turtle — including running a whole nested Tunnel —
+--   provided it restores the EXACT pose (x, y, z AND heading) before returning.
+--   The sweep keeps no cursor: every decision re-reads nav:getPose() (see
+--   project() below) and every turn is an absolute turnTo, so a pose-restoring
+--   excursion is invisible to it. Proven by test_tunnel s16/s17.
 
 local Tunnel = {}
 Tunnel.__index = Tunnel
@@ -92,6 +99,23 @@ end
 function Tunnel:_dumpAvailable()
   local d = self.nav:getItemDetail(self.chestSlot)
   return d ~= nil and self.chestMatch(d.name) == true
+end
+
+-- The loot region is 1..lootMax = one below the lowest ENABLED reserved slot, so
+-- countEmptySlots(lootMax) and _dump(lootMax) never see a reserved slot. Pass
+-- dumpEnabled when the caller has already computed it; branch.lua calls this
+-- with no argument to derive the same region for a mid-vein dump.
+function Tunnel:_lootMax(dumpEnabled)
+  if dumpEnabled == nil then dumpEnabled = self:_dumpAvailable() end
+  local lootMax = 16
+  if dumpEnabled then lootMax = math.min(lootMax, self.chestSlot - 1) end
+  if self.torchEvery > 0 and self.torchSlot ~= nil then
+    lootMax = math.min(lootMax, self.torchSlot - 1)
+  end
+  if self.fill and self.fillerSlot ~= nil then
+    lootMax = math.min(lootMax, self.fillerSlot - 1)
+  end
+  return lootMax
 end
 
 -- Dump every loot slot (1..lootMax) into an ender chest placed above the turtle,
@@ -173,12 +197,7 @@ function Tunnel:run(spec)
   local F = { x = DX[S.h], z = DZ[S.h] }
   local R = { x = DX[(S.h + 1) % 4], z = DZ[(S.h + 1) % 4] }
 
-  -- Loot region = 1..lootMax = one below the lowest ENABLED reserved slot, so
-  -- countEmptySlots(lootMax) and _dump(lootMax) never see a reserved slot.
-  local lootMax = 16
-  if dumpEnabled then lootMax = math.min(lootMax, self.chestSlot - 1) end
-  if torchEnabled then lootMax = math.min(lootMax, self.torchSlot - 1) end
-  if fillEnabled then lootMax = math.min(lootMax, self.fillerSlot - 1) end
+  local lootMax = self:_lootMax(dumpEnabled)
 
   -- The turtle's offset from S in corridor coords: l (forward), w (right), u (up).
   local function project()
