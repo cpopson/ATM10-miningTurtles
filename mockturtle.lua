@@ -404,6 +404,15 @@ function Mock:_setBedrock(x, y, z)
   self:_setBlock(x, y, z, "minecraft:bedrock", { solid = true, breakable = false })
 end
 
+-- A block the turtle's pickaxe cannot break that is NOT a world boundary: the
+-- All the Mods 10 ores (Allthemodium/Vibranium/Unobtainium). Deliberately
+-- distinct from _setBedrock so tests can tell the "dig around it" case from the
+-- "stop, you've hit the floor" case.
+function Mock:_setUnmineableOre(x, y, z, name)
+  self:_setBlock(x, y, z, name or "allthemodium:allthemodium_ore",
+    { solid = true, breakable = false, tags = { ["c:ores"] = true } })
+end
+
 function Mock:_setBedrockPlane(y)
   self.floorY = y
 end

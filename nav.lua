@@ -11,10 +11,16 @@
 -- Targets the Lua 5.1/5.2 common subset (CC:Tweaked is Cobalt ~5.1); also runs
 -- under desktop Lua 5.4 for tests.
 
+local Protect = require("protect")
+
 -- Shared geometry. mockturtle.lua MUST define these identically — any drift
 -- here is exactly the bug probe.lua exists to catch.
 local DX = { [0] = 0, [1] = 1, [2] = 0, [3] = -1 } -- +X on East
 local DZ = { [0] = -1, [1] = 0, [2] = 1, [3] = 0 } -- -Z on North
+
+-- The three faces a turtle can act on, and the backend calls for each.
+local DIG = { front = "dig", up = "digUp", down = "digDown" }
+local DETECT = { front = "detect", up = "detectUp", down = "detectDown" }
 
 local Nav = {}
 Nav.__index = Nav
@@ -22,7 +28,12 @@ Nav.__index = Nav
 -- Nav.new(backend, startPose, opts) -> nav
 --   backend   : injected turtle API subset (real `turtle` global or a mock). Required.
 --   startPose : optional {x,y,z,h}; defaults to origin facing north. Copied, not aliased.
---   opts      : optional { maxDigRetries = 16 }
+--   opts      : optional {
+--       maxDigRetries = 16,
+--       classify  = fn(name) -> "stop"|"skip",  -- see protect.lua
+--       onBlocked = fn(entry),                  -- fired once per SKIP block found
+--       detour    = true,                       -- false = abort instead of routing around
+--     }
 -- Does not touch the backend at construction (so tests can assert a clean start).
 function Nav.new(backend, startPose, opts)
   assert(backend, "nav: backend is required")
@@ -36,9 +47,17 @@ function Nav.new(backend, startPose, opts)
     z = startPose.z or 0,
     h = startPose.h or 0,
   }
-  self.opts = { maxDigRetries = opts.maxDigRetries or 16 }
+  self.opts = {
+    maxDigRetries = opts.maxDigRetries or 16,
+    classify = opts.classify or Protect.classify,
+    onBlocked = opts.onBlocked,
+    detour = opts.detour ~= false,
+  }
   self.digCount = 0
-  self.dug = {} -- log of {x,y,z,h,face} for each successful dig
+  self.dug = {}       -- log of {x,y,z,h,face} for each successful dig
+  self.blocked = {}   -- {x,y,z,name,face,kind} per block we could not break
+  self.blockedAt = {} -- "x,y,z" -> kind, so we never attack the same block twice
+  self.detours = 0
   return self
 end
 
@@ -60,6 +79,25 @@ end
 
 function Nav:getPose()
   return { x = self.pose.x, y = self.pose.y, z = self.pose.z, h = self.pose.h }
+end
+
+-- setPose(pose) — re-anchor the tracked frame WITHOUT moving the turtle. Only
+-- locate.lua uses this, to re-express nav's frame in GPS world coordinates once
+-- it has worked out where the turtle actually is and which way it faces.
+function Nav:setPose(pose)
+  self.pose.x = pose.x or self.pose.x
+  self.pose.y = pose.y or self.pose.y
+  self.pose.z = pose.z or self.pose.z
+  self.pose.h = pose.h or self.pose.h
+  return true
+end
+
+-- The coordinates of the cell on `face` ("front" uses the CURRENT heading).
+function Nav:faceCoord(face)
+  if face == "up" then return self.pose.x, self.pose.y + 1, self.pose.z end
+  if face == "down" then return self.pose.x, self.pose.y - 1, self.pose.z end
+  local h = self.pose.h
+  return self.pose.x + DX[h], self.pose.y, self.pose.z + DZ[h]
 end
 
 --------------------------------------------------------------------------------
@@ -130,6 +168,58 @@ function Nav:detectDown()
 end
 
 --------------------------------------------------------------------------------
+-- Blocks we could not break
+--------------------------------------------------------------------------------
+-- Some modded ores (Allthemodium, Vibranium, Unobtainium) are simply harder than
+-- a turtle's pickaxe: `dig` returns false and no amount of retrying helps. We
+-- find that out the CHEAP way — try the dig first, and only inspect once it has
+-- already failed — so the normal case costs exactly what it always did.
+
+local function bkey(x, y, z)
+  return x .. "," .. y .. "," .. z
+end
+
+-- The kind ("stop"/"skip") recorded for a world cell, or nil if we've never
+-- failed to dig it.
+function Nav:blockedKindAt(x, y, z)
+  return self.blockedAt[bkey(x, y, z)]
+end
+
+-- How many distinct blocks this nav has left standing (SKIP only — a `stop` is
+-- the world floor, not something the player wants a list of).
+function Nav:skippedCount()
+  local n = 0
+  for _, e in ipairs(self.blocked) do
+    if e.kind == "skip" then n = n + 1 end
+  end
+  return n
+end
+
+-- Record the block on `face` as unbreakable and return its kind. Idempotent per
+-- cell: the onBlocked hook (which the drivers wire to the find journal) fires at
+-- most once per block, however many times we bump into it.
+function Nav:noteBlocked(face, name)
+  local x, y, z = self:faceCoord(face)
+  local k = bkey(x, y, z)
+  local seen = self.blockedAt[k]
+  if seen then return seen end
+  local kind = self.opts.classify(name) or "skip"
+  self.blockedAt[k] = kind
+  local entry = { x = x, y = y, z = z, name = name, face = face, kind = kind }
+  self.blocked[#self.blocked + 1] = entry
+  if kind == "skip" and self.opts.onBlocked then
+    self.opts.onBlocked(entry)
+  end
+  return kind
+end
+
+function Nav:_inspectFace(face)
+  if face == "up" then return self:inspectUp() end
+  if face == "down" then return self:inspectDown() end
+  return self:inspect()
+end
+
+--------------------------------------------------------------------------------
 -- Digging (call backend; track blocks dug; no position change)
 --------------------------------------------------------------------------------
 
@@ -140,23 +230,35 @@ function Nav:_logDig(face)
   self.dug[#self.dug + 1] = dug
 end
 
-function Nav:dig()
-  local ok, err = self.b.dig()
-  if ok then self:_logDig("front") end
-  return ok, err
+-- The single dig path, shared by the public dig* methods and by tryMove.
+-- Returns true, or false plus a reason:
+--   "skip" / "stop"  the block is unbreakable (already recorded)
+--   <backend error>  nothing there, or some other refusal
+function Nav:_digFace(face)
+  local x, y, z = self:faceCoord(face)
+  local known = self.blockedAt[bkey(x, y, z)]
+  if known then return false, known end -- proven unbreakable; don't spend a call
+
+  local ok, err = self.b[DIG[face]]()
+  if ok then
+    self:_logDig(face)
+    return true
+  end
+
+  -- The dig failed. ONE inspect tells us whether that's because the cell is
+  -- empty (nothing to do) or because the block is beyond our pickaxe.
+  local present, data = self:_inspectFace(face)
+  if present and type(data) == "table" and type(data.name) == "string" then
+    return false, self:noteBlocked(face, data.name)
+  end
+  return false, err
 end
 
-function Nav:digUp()
-  local ok, err = self.b.digUp()
-  if ok then self:_logDig("up") end
-  return ok, err
-end
+function Nav:dig() return self:_digFace("front") end
 
-function Nav:digDown()
-  local ok, err = self.b.digDown()
-  if ok then self:_logDig("down") end
-  return ok, err
-end
+function Nav:digUp() return self:_digFace("up") end
+
+function Nav:digDown() return self:_digFace("down") end
 
 --------------------------------------------------------------------------------
 -- Fuel
@@ -218,11 +320,10 @@ end
 -- tryMove runs the retry loop shared by all four movers. Pose updates ONLY on a
 -- confirmed successful backend move — the invariant that makes round trips close.
 --
+--   face     : "front"/"up"/"down" (which dig+detect to use), or nil for back()
 --   moveFn   : backend move (forward/back/up/down)
---   digFn    : backend dig for that direction, or nil (back can't dig)
---   detectFn : backend detect for that direction, or nil
 --   dx,dy,dz : tracked-pose delta applied on success
-local function tryMove(self, moveFn, digFn, detectFn, dx, dy, dz)
+local function tryMove(self, face, moveFn, dx, dy, dz)
   if not self:hasFuel(1) then
     return false, "no_fuel"
   end
@@ -238,17 +339,20 @@ local function tryMove(self, moveFn, digFn, detectFn, dx, dy, dz)
     end
 
     -- Move failed. Figure out why and try to clear the way.
-    if digFn == nil then
+    if face == nil then
       -- back(): no dig available. Caller should turn-and-forward instead.
       return false, "blocked_back"
     end
 
-    if detectFn and detectFn() then
+    if self.b[DETECT[face]]() then
       -- A block is in the way.
-      local dok = digFn()
+      local dok, why = self:_digFace(face)
       if not dok then
-        -- Unbreakable (bedrock) or nothing there to dig — give up now rather
-        -- than burn every retry on something we can't clear.
+        -- Give up now rather than burn every retry on something we can't clear.
+        -- A "skip" is an ore harder than our pickaxe: the caller can route
+        -- around it and leave it standing. Anything else (bedrock, an empty
+        -- cell) keeps the original, blunter verdict.
+        if why == "skip" then return false, "blocked_protected" end
         return false, "blocked_unbreakable"
       end
       -- Dug it; loop and retry. A falling gravel/sand column refills the cell,
@@ -256,7 +360,7 @@ local function tryMove(self, moveFn, digFn, detectFn, dx, dy, dz)
     else
       -- Move failed but nothing detected: likely a mob/entity. CC dig also
       -- attacks, so try that, then retry.
-      digFn()
+      self:_digFace(face)
     end
   end
 
@@ -266,20 +370,100 @@ end
 -- Heading is read fresh each call so a turn between moves is respected.
 function Nav:forward()
   local h = self.pose.h
-  return tryMove(self, self.b.forward, self.b.dig, self.b.detect, DX[h], 0, DZ[h])
+  return tryMove(self, "front", self.b.forward, DX[h], 0, DZ[h])
 end
 
 function Nav:back()
   local h = self.pose.h
-  return tryMove(self, self.b.back, nil, nil, -DX[h], 0, -DZ[h])
+  return tryMove(self, nil, self.b.back, -DX[h], 0, -DZ[h])
 end
 
 function Nav:up()
-  return tryMove(self, self.b.up, self.b.digUp, self.b.detectUp, 0, 1, 0)
+  return tryMove(self, "up", self.b.up, 0, 1, 0)
 end
 
 function Nav:down()
-  return tryMove(self, self.b.down, self.b.digDown, self.b.detectDown, 0, -1, 0)
+  return tryMove(self, "down", self.b.down, 0, -1, 0)
+end
+
+--------------------------------------------------------------------------------
+-- Routing around a block that cannot be mined
+--------------------------------------------------------------------------------
+-- For horizontal travel the rule is VERTICAL-ONLY detours: climb over the block
+-- (preferred) or drop under it, landing on exactly the cell forward() was aiming
+-- for. The turtle's X/Z footprint never changes, so a fleet turtle cannot wander
+-- out of the region the coordinator assigned it — collision avoidance stays
+-- structural, as CLAUDE.md requires. (We are avoiding a BLOCK here, not another
+-- turtle; this adds no runtime turtle-to-turtle pathfinding.)
+--
+-- There is deliberately NO single-cell detour for up/down: when an up() reports
+-- `blocked_protected` the unbreakable block IS the destination, so no three-move
+-- excursion can reach it. Vertical obstructions are handled by whoever owns the
+-- geometry — goTo's column bypass below, and the patterns' choose-another-corner
+-- logic for layer changes.
+
+local function flip(h) return (h + 2) % 4 end
+
+-- Retreat one cell the way we came, keeping our heading. back() cannot dig, so
+-- fall back to a 180 + forward (which can) if something settled in behind us.
+function Nav:_reverse()
+  if self:back() then return true end
+  local h = self.pose.h
+  self:turnTo(flip(h))
+  local ok, err = self:forward()
+  self:turnTo(h)
+  return ok, err
+end
+
+-- _stepOver(v) — hop the cell directly ahead: rise (v=1 over / v=-1 under),
+-- forward, forward, drop back in. Ends TWO cells along, with the obstruction
+-- left standing in between — the block occupies a whole cell, so "around" can
+-- never mean "onto it". Restores the starting cell on any failure.
+function Nav:_stepOver(v)
+  local rise = (v == 1) and self.up or self.down
+  local fall = (v == 1) and self.down or self.up
+  if not rise(self) then return false end
+  local moved = 0
+  while moved < 2 and self:forward() do moved = moved + 1 end
+  if moved == 2 and fall(self) then return true end
+  -- Couldn't clear it, or couldn't drop back in past it: undo the excursion.
+  for _ = 1, moved do
+    if not self:_reverse() then return false end
+  end
+  fall(self)
+  return false
+end
+
+-- around() — get PAST the unmineable block directly ahead, leaving it standing.
+-- Ends two cells forward. Returns true, or false,err from the starting cell.
+function Nav:around()
+  if not self.opts.detour then return false, "detour_disabled" end
+  if self:_stepOver(1) then self.detours = self.detours + 1; return true end
+  if self:_stepOver(-1) then self.detours = self.detours + 1; return true end
+  return false, "detour_failed"
+end
+
+-- step(face, budget) -> ok, err, advanced
+-- The movement primitive the patterns use: move one cell, hopping an unmineable
+-- block if one is in the way.
+--   budget : how many cells forward we may end up (default 2 — room for one
+--            hop). Callers pass the exact distance left to their target, so a
+--            block sitting ON the target is reported as "unreachable" instead of
+--            being jumped clean past it.
+--   advanced : cells actually covered (2 after a hop), so a caller driving by
+--            distance stays in step with reality.
+function Nav:step(face, budget)
+  local mover = (face == "up") and self.up or (face == "down") and self.down or self.forward
+  local ok, err = mover(self)
+  if ok then return true, nil, 1 end
+  if err ~= "blocked_protected" then return false, err, 0 end
+  -- A blocked vertical move has the obstruction ON the destination: there is no
+  -- hop that reaches it. Same when the destination itself is what is blocked.
+  if face == "up" or face == "down" then return false, "unreachable", 0 end
+  if (budget or 2) < 2 then return false, "unreachable", 0 end
+  local aok, aerr = self:around()
+  if aok then return true, nil, 2 end
+  return false, aerr, 0
 end
 
 --------------------------------------------------------------------------------
@@ -294,39 +478,80 @@ end
 function Nav:goTo(x, y, z, order)
   order = order or "yxz"
 
-  local function stepX()
-    local d = x - self.pose.x
-    if d == 0 then return true end
-    self:turnTo(d > 0 and 1 or 3)
-    for _ = 1, math.abs(d) do
-      local ok, err = self:forward()
+  -- Driven by the REMAINING distance, re-read from the pose each time, because a
+  -- hop over an unmineable block covers two cells rather than one.
+  local function runAxis(axis, target, hPos, hNeg)
+    while self.pose[axis] ~= target do
+      local d = target - self.pose[axis]
+      self:turnTo(d > 0 and hPos or hNeg)
+      local ok, err = self:step("front", math.abs(d))
       if not ok then return false, err end
     end
     return true
   end
 
-  local function stepZ()
-    local d = z - self.pose.z
-    if d == 0 then return true end
-    self:turnTo(d > 0 and 2 or 0)
-    for _ = 1, math.abs(d) do
-      local ok, err = self:forward()
-      if not ok then return false, err end
-    end
-    return true
-  end
+  local function runX() return runAxis("x", x, 1, 3) end
 
-  local function stepY()
+  local function runZ() return runAxis("z", z, 2, 0) end
+
+  -- The vertical leg gets a COLUMN BYPASS rather than a per-cell detour: step
+  -- one column sideways, finish the climb there, and step back at the end. The
+  -- quarry's trip home climbs its entry shaft, and a skipped ore the sweep dug
+  -- around earlier can be sitting in it — without this, the turtle gets home
+  -- every time except the one time it matters.
+  local function runY()
     local d = y - self.pose.y
-    local move = d > 0 and self.up or self.down
-    for _ = 1, math.abs(d) do
-      local ok, err = move(self)
-      if not ok then return false, err end
+    if d == 0 then return true end
+    local mover = (d > 0) and self.up or self.down
+    local off = nil -- heading we sidestepped along; nil while on the target column
+
+    -- Back to the target column. Plain forward(), never step(): a vertical
+    -- detour here would silently undo a level of the climb.
+    local function rejoin()
+      if not off then return true end
+      self:turnTo(flip(off))
+      off = nil
+      return self:forward()
     end
-    return true
+
+    local function sidestep()
+      local h0 = self.pose.h
+      for i = 0, 3 do
+        self:turnTo((h0 + i) % 4)
+        if self:forward() then return (h0 + i) % 4 end
+      end
+      return nil
+    end
+
+    local function oneLevel()
+      local ok, err = mover(self)
+      if ok then return true end
+      if err ~= "blocked_protected" or not self.opts.detour then return false, err end
+      if off then
+        -- Already off-column and blocked again: the target column may well be
+        -- clear at this level, so try there before stepping further afield.
+        if not rejoin() then return false, err end
+        local ok2, err2 = mover(self)
+        if ok2 then return true end
+        if err2 ~= "blocked_protected" then return false, err2 end
+      end
+      off = sidestep()
+      if not off then return false, "detour_failed" end
+      self.detours = self.detours + 1
+      return mover(self)
+    end
+
+    for _ = 1, math.abs(d) do
+      local ok, err = oneLevel()
+      if not ok then
+        rejoin()
+        return false, err
+      end
+    end
+    return rejoin()
   end
 
-  local steps = { x = stepX, y = stepY, z = stepZ }
+  local steps = { x = runX, y = runY, z = runZ }
   for i = 1, #order do
     local axis = order:sub(i, i)
     local step = steps[axis]

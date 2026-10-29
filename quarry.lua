@@ -22,6 +22,8 @@
 -- Heading convention: 0=N(-Z) 1=E(+X) 2=S(+Z) 3=W(-X). We steer with
 -- nav:turnTo(absoluteHeading), never raw deltas.
 
+local Sweep = require("sweep")
+
 local Quarry = {}
 Quarry.__index = Quarry
 
@@ -44,10 +46,6 @@ function Quarry.new(nav, opts)
   self.chestSlot = opts.chestSlot or 16
   self.chestMatch = opts.chestMatch or isEnderChest
   return self
-end
-
-local function flip(h)
-  return (h + 2) % 4
 end
 
 local function validate(spec)
@@ -97,31 +95,6 @@ function Quarry:_dump()
   return true
 end
 
--- Sweep ONE already-entered layer in a serpentine (boustrophedon) pattern.
--- afterMove() is called after each successful forward; it returns ok, err (used
--- to fold in cell counting and the full-inventory dump). Returns ok, err, lastRowDir.
-local function sweepLayer(nav, W, L, rowDir, stepDir, afterMove)
-  local dir = rowDir
-  for row = 1, W do
-    nav:turnTo(dir)
-    for _ = 1, L - 1 do -- L cells in a row = L-1 moves (already in the first)
-      local ok, err = nav:forward()
-      if not ok then return false, err, dir end
-      local aok, aerr = afterMove()
-      if not aok then return false, aerr, dir end
-    end
-    if row < W then -- step over into the next row
-      nav:turnTo(stepDir)
-      local ok, err = nav:forward()
-      if not ok then return false, err, dir end
-      local aok, aerr = afterMove()
-      if not aok then return false, aerr, dir end
-      dir = flip(dir) -- serpentine: next row runs the other way
-    end
-  end
-  return true, nil, dir
-end
-
 -- quarry:run(spec)
 --   spec = { width=W>=1, length=L>=1, depth=D>=1 }
 -- Returns  true,  stats           on full clear + closed round trip
@@ -134,8 +107,12 @@ function Quarry:run(spec)
   end
 
   local S = nav:getPose()
-  local cells, layersDone, dumps = 0, 0, 0
+  local cells, layersDone, dumps, skipped = 0, 0, 0, 0
   local dumpEnabled = self:_dumpAvailable()
+
+  -- The box, in absolute coordinates. Rows run along X, columns along Z.
+  local x0, x1 = S.x, S.x + W - 1
+  local z0, z1 = S.z, S.z + L - 1
 
   local function stats(pose)
     return {
@@ -143,6 +120,8 @@ function Quarry:run(spec)
       layersDone = layersDone,
       cellsCleared = cells,
       dumps = dumps,
+      skipped = skipped,                  -- cells left standing this run
+      blocksLeft = nav:skippedCount(),    -- distinct unmineable blocks recorded
       pose = pose or nav:getPose(),
     }
   end
@@ -171,28 +150,54 @@ function Quarry:run(spec)
     return true
   end
 
+  -- Drop one layer, landing on a CORNER so the next serpentine has a well-defined
+  -- start. Straight down from where we are is the normal case and costs nothing
+  -- extra; if that floor cell turns out to be unmineable there is no "around" —
+  -- the block IS the destination — so we try the layer's other corners instead.
+  -- Everything in this layer is already cleared, so walking between corners is
+  -- free. (At the very start the layer above the box is NOT cleared, so an
+  -- unmineable block under the entry corner costs a short dug path up there. It
+  -- beats refusing to start.)
+  --
+  -- Landing on a corner is not optional: the next sweep derives its whole
+  -- itinerary from where it starts. The sweep normally ENDS on a corner, which
+  -- sorts first here at distance 0 and costs no extra moves — but if its last
+  -- cells were skipped it stops short, and dropping from there would map the
+  -- next layer onto the wrong rectangle.
+  local function descend()
+    local p = nav:getPose()
+    for _, corner in ipairs(Sweep.corners(x0, x1, z0, z1, p.x, p.z)) do
+      local here = (corner.x == p.x and corner.z == p.z)
+      if here or nav:goTo(corner.x, p.y, corner.z, "xz") then
+        local ok2, err2 = nav:down()
+        if ok2 then return true end
+        if err2 ~= "blocked_protected" then return false, err2 end
+      end
+    end
+    return false, "blocked_protected"
+  end
+
   -- Enter the top layer: down() digs the top-corner cell and descends into it.
-  local ok, err = nav:down()
+  local ok, err = descend()
   if not ok then return false, err, stats() end
   local aok, aerr = afterMove()
   if not aok then return false, aerr, stats() end
 
-  local rowDir, stepDir = 2, 1
   for layer = 1, D do
-    local sok, serr, endDir = sweepLayer(nav, W, L, rowDir, stepDir, afterMove)
+    -- Derive the sweep from the corner we actually landed on, so descending
+    -- somewhere unexpected needs no direction bookkeeping at all.
+    local p = nav:getPose()
+    local cellAt, rows, cols = Sweep.cornerMap(p.x, p.y, p.z, x0, x1, z0, z1)
+    local sok, serr, sstats = Sweep.layer(nav, rows, cols, cellAt, afterMove)
+    skipped = skipped + (sstats and sstats.skipped or 0)
     if not sok then return false, serr, stats() end
     layersDone = layer
 
     if layer < D then
-      local dok, derr = nav:down() -- descend into the next layer
+      local dok, derr = descend()
       if not dok then return false, derr, stats() end
       local ok2, err2 = afterMove()
       if not ok2 then return false, err2, stats() end
-      -- Flip BOTH directions: after descending, the next layer sweeps back the
-      -- way it came. Flipping only stepDir would walk the first row out of the
-      -- box; endDir is the last row's direction, so flip it for the new first row.
-      rowDir = flip(endDir)
-      stepDir = flip(stepDir)
     end
   end
 
